@@ -1,6 +1,3 @@
-import { removeSampleClasses } from '../utils/repository'
-
-export default defineEventHandler(async () => {
-  await removeSampleClasses()
-  return { ok: true }
+export default defineEventHandler(() => {
+  throw createError({ statusCode: 410, message: 'Public sample-data deletion is no longer available.' })
 })

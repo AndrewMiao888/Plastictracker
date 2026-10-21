@@ -1,13 +1,18 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { neon } from '@neondatabase/serverless'
-import { SCHOOL_GOAL, starterData, type Dashboard, type WeekEntry } from './tracker'
+import { SCHOOL_GOAL, type ClassEntry, type Dashboard, type WeekEntry } from './tracker'
+
+type StoredClass = ClassEntry & { passwordHash?: string | null; failedLogins?: number; lockedUntil?: string | null }
+type StoredDashboard = Omit<Dashboard, 'classes'> & { classes: StoredClass[] }
+type Credentials = { hash: string | null; failedLogins: number; lockedUntil: string | null }
 
 const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL
 const sql = databaseUrl ? neon(databaseUrl) : null
 const filePath = process.env.DATA_FILE || join(process.cwd(), 'data', 'school.json')
 let queue = Promise.resolve<unknown>(undefined)
 let schemaPromise: Promise<void> | undefined
+const localSessions = new Map<string, { name: string; expiresAt: string }>()
 
 async function ensureSchema() {
   if (!sql) throw new Error('The school database is not configured.')
@@ -15,8 +20,14 @@ async function ensureSchema() {
     await sql`CREATE TABLE IF NOT EXISTS plastic_classes (
       name varchar(4) PRIMARY KEY,
       sample boolean NOT NULL DEFAULT false,
-      created_at timestamptz NOT NULL DEFAULT now()
+      created_at timestamptz NOT NULL DEFAULT now(),
+      password_hash text,
+      failed_logins integer NOT NULL DEFAULT 0,
+      locked_until timestamptz
     )`
+    await sql`ALTER TABLE plastic_classes ADD COLUMN IF NOT EXISTS password_hash text`
+    await sql`ALTER TABLE plastic_classes ADD COLUMN IF NOT EXISTS failed_logins integer NOT NULL DEFAULT 0`
+    await sql`ALTER TABLE plastic_classes ADD COLUMN IF NOT EXISTS locked_until timestamptz`
     await sql`CREATE TABLE IF NOT EXISTS plastic_weekly_entries (
       class_name varchar(4) NOT NULL REFERENCES plastic_classes(name) ON DELETE CASCADE,
       week_start date NOT NULL,
@@ -25,29 +36,36 @@ async function ensureSchema() {
       updated_at timestamptz NOT NULL DEFAULT now(),
       PRIMARY KEY (class_name, week_start)
     )`
+    await sql`CREATE TABLE IF NOT EXISTS plastic_sessions (
+      token_hash char(64) PRIMARY KEY,
+      class_name varchar(4) NOT NULL REFERENCES plastic_classes(name) ON DELETE CASCADE,
+      expires_at timestamptz NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`
+    await sql`CREATE INDEX IF NOT EXISTS plastic_sessions_class_idx ON plastic_sessions(class_name)`
   })().catch(error => { schemaPromise = undefined; throw error })
   await schemaPromise
   return sql
 }
 
-async function readLocal(): Promise<Dashboard> {
+async function readLocal(): Promise<StoredDashboard> {
   if (process.env.VERCEL) throw new Error('The deployed school database is not configured.')
-  try { return JSON.parse(await readFile(filePath, 'utf8')) as Dashboard }
+  try { return JSON.parse(await readFile(filePath, 'utf8')) as StoredDashboard }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-    const initial = starterData()
+    const initial: StoredDashboard = { goal: SCHOOL_GOAL, classes: [] }
     await mkdir(dirname(filePath), { recursive: true })
     try {
       await writeFile(filePath, JSON.stringify(initial, null, 2), { flag: 'wx' })
       return initial
     } catch (writeError) {
       if ((writeError as NodeJS.ErrnoException).code !== 'EEXIST') throw writeError
-      return JSON.parse(await readFile(filePath, 'utf8')) as Dashboard
+      return JSON.parse(await readFile(filePath, 'utf8')) as StoredDashboard
     }
   }
 }
 
-function updateLocal<T>(change: (data: Dashboard) => T): Promise<T> {
+function updateLocal<T>(change: (data: StoredDashboard) => T): Promise<T> {
   const result = queue.then(async () => {
     const data = await readLocal()
     const response = change(data)
@@ -62,7 +80,12 @@ function updateLocal<T>(change: (data: Dashboard) => T): Promise<T> {
 }
 
 export async function getDashboard(): Promise<Dashboard> {
-  if (!sql) return readLocal()
+  if (!sql) {
+    const data = await readLocal()
+    return { goal: data.goal, classes: data.classes.map(entry => ({
+      name: entry.name, sample: entry.sample, createdAt: entry.createdAt, weeks: entry.weeks,
+    })) }
+  }
   await ensureSchema()
   const classRows = await sql`SELECT name, sample, created_at::text AS created_at FROM plastic_classes ORDER BY name`
   const weekRows = await sql`SELECT class_name, week_start::text AS week_start, lunches, items, updated_at::text AS updated_at FROM plastic_weekly_entries`
@@ -79,14 +102,14 @@ export async function getDashboard(): Promise<Dashboard> {
   return { goal: SCHOOL_GOAL, classes }
 }
 
-export async function createClass(name: string): Promise<boolean> {
+export async function createClass(name: string, passwordHash: string): Promise<boolean> {
   if (!sql) return updateLocal(data => {
     if (data.classes.some(entry => entry.name === name)) return false
-    data.classes.push({ name, sample: false, createdAt: new Date().toISOString(), weeks: {} })
+    data.classes.push({ name, sample: false, createdAt: new Date().toISOString(), weeks: {}, passwordHash, failedLogins: 0, lockedUntil: null })
     return true
   })
   await ensureSchema()
-  const rows = await sql`INSERT INTO plastic_classes (name) VALUES (${name}) ON CONFLICT DO NOTHING RETURNING name`
+  const rows = await sql`INSERT INTO plastic_classes (name, password_hash) VALUES (${name}, ${passwordHash}) ON CONFLICT DO NOTHING RETURNING name`
   return rows.length > 0
 }
 
@@ -120,12 +143,109 @@ export async function deleteWeek(name: string, week: string): Promise<boolean> {
   return true
 }
 
-export async function removeSampleClasses() {
+export async function getCredentials(name: string): Promise<Credentials | null> {
+  if (!sql) {
+    const entry = (await readLocal()).classes.find(item => item.name === name)
+    return entry ? { hash: entry.passwordHash || null, failedLogins: entry.failedLogins || 0, lockedUntil: entry.lockedUntil || null } : null
+  }
+  await ensureSchema()
+  const rows = await sql`SELECT password_hash, failed_logins, locked_until::text AS locked_until FROM plastic_classes WHERE name = ${name}`
+  const row = rows[0]
+  return row ? { hash: row.password_hash ? String(row.password_hash) : null,
+    failedLogins: Number(row.failed_logins), lockedUntil: row.locked_until ? String(row.locked_until) : null } : null
+}
+
+export async function recordFailedLogin(name: string) {
   if (!sql) return updateLocal(data => {
-    data.classes = data.classes.filter(entry => !entry.sample)
+    const entry = data.classes.find(item => item.name === name)
+    if (!entry) return false
+    const expired = entry.lockedUntil && new Date(entry.lockedUntil).getTime() <= Date.now()
+    entry.failedLogins = expired ? 1 : (entry.failedLogins || 0) + 1
+    entry.lockedUntil = entry.failedLogins >= 5 ? new Date(Date.now() + 15 * 60_000).toISOString() : null
     return true
   })
   await ensureSchema()
-  await sql`DELETE FROM plastic_classes WHERE sample = true`
-  return true
+  await sql`UPDATE plastic_classes SET
+    failed_logins = CASE WHEN locked_until <= now() THEN 1 ELSE failed_logins + 1 END,
+    locked_until = CASE WHEN locked_until <= now() THEN NULL
+      WHEN failed_logins + 1 >= 5 THEN now() + interval '15 minutes' ELSE NULL END
+    WHERE name = ${name}`
+}
+
+export async function clearFailedLogins(name: string) {
+  if (!sql) return updateLocal(data => {
+    const entry = data.classes.find(item => item.name === name)
+    if (!entry) return false
+    entry.failedLogins = 0
+    entry.lockedUntil = null
+    return true
+  })
+  await ensureSchema()
+  await sql`UPDATE plastic_classes SET failed_logins = 0, locked_until = NULL WHERE name = ${name}`
+}
+
+export async function setClassPassword(name: string, passwordHash: string) {
+  if (!sql) return updateLocal(data => {
+    const entry = data.classes.find(item => item.name === name)
+    if (!entry) return false
+    entry.passwordHash = passwordHash
+    entry.failedLogins = 0
+    entry.lockedUntil = null
+    return true
+  })
+  await ensureSchema()
+  const rows = await sql`UPDATE plastic_classes SET password_hash = ${passwordHash}, failed_logins = 0, locked_until = NULL WHERE name = ${name} RETURNING name`
+  return rows.length > 0
+}
+
+export async function deleteClass(name: string) {
+  if (!sql) {
+    const removed = await updateLocal(data => {
+      const before = data.classes.length
+      data.classes = data.classes.filter(entry => entry.name !== name)
+      return data.classes.length < before
+    })
+    if (removed) await removeClassSessions(name)
+    return removed
+  }
+  await ensureSchema()
+  const rows = await sql`DELETE FROM plastic_classes WHERE name = ${name} RETURNING name`
+  return rows.length > 0
+}
+
+export async function storeSession(tokenHash: string, name: string, expiresAt: string) {
+  if (!sql) {
+    localSessions.set(tokenHash, { name, expiresAt })
+    return
+  }
+  await ensureSchema()
+  await sql`DELETE FROM plastic_sessions WHERE expires_at <= now()`
+  await sql`INSERT INTO plastic_sessions (token_hash, class_name, expires_at) VALUES (${tokenHash}, ${name}, ${expiresAt}::timestamptz)`
+}
+
+export async function findSession(tokenHash: string): Promise<string | null> {
+  if (!sql) {
+    const session = localSessions.get(tokenHash)
+    if (!session) return null
+    if (new Date(session.expiresAt).getTime() <= Date.now()) { localSessions.delete(tokenHash); return null }
+    return (await readLocal()).classes.some(entry => entry.name === session.name) ? session.name : null
+  }
+  await ensureSchema()
+  const rows = await sql`SELECT class_name FROM plastic_sessions WHERE token_hash = ${tokenHash} AND expires_at > now()`
+  return rows[0] ? String(rows[0].class_name) : null
+}
+
+export async function removeSession(tokenHash: string) {
+  if (!sql) { localSessions.delete(tokenHash); return }
+  await ensureSchema()
+  await sql`DELETE FROM plastic_sessions WHERE token_hash = ${tokenHash}`
+}
+
+export async function removeClassSessions(name: string) {
+  if (!sql) {
+    for (const [token, session] of localSessions) if (session.name === name) localSessions.delete(token)
+    return
+  }
+  await ensureSchema()
+  await sql`DELETE FROM plastic_sessions WHERE class_name = ${name}`
 }

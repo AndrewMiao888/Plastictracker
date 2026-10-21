@@ -58,3 +58,35 @@
 @media(max-width:700px){.hero-panel{min-height:300px}.hero-pulse{max-width:95%}}
 @media(max-width:480px){.hero-panel{min-height:320px}.hero-pulse{font-size:9px;margin-top:16px;padding:8px}.hero-pulse strong{font-size:13px}.hero-pulse>span:nth-child(2){font-size:8px}.eyebrow{flex-wrap:wrap;line-height:1.3}}
 @media(prefers-reduced-motion:reduce){.hero-visual,.pulse-dot{animation:none}.metric,.leader-row,.leader-avatar,.badge-icon,.level-track span,.hero-progress span{transition:none}}
+
+/* Class access */
+.session-label{display:inline-flex;align-items:center;gap:5px;padding:6px 9px;border-radius:5px;background:#e7f3e6;color:#34734e;font-size:10px;font-weight:800;white-space:nowrap}
+.class-session-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:37px;margin-top:11px}
+.class-session-state{display:inline-flex;align-items:center;gap:6px;color:#8a9c8d;font-size:10px;font-weight:800;white-space:nowrap}
+.class-session-state.editing{color:#438c5f}
+.class-session-actions{display:flex;align-items:center;gap:5px}
+.class-session-actions button{display:inline-flex;align-items:center;gap:5px;border:0;background:transparent;color:#638771;padding:7px 5px;border-radius:5px;font-size:10px;font-weight:800;white-space:nowrap}
+.class-session-actions button:hover{background:#edf5eb;color:#2e6c48}
+.locked-state{margin-top:12px;padding-top:17px;border-top:1px solid #e9eee8;min-height:205px}
+.locked-heading{display:flex;align-items:flex-start;gap:11px;margin-bottom:16px}
+.locked-heading>span{display:grid;place-items:center;width:39px;height:39px;flex:none;border-radius:7px;background:#ecf2ec;color:#5a8a69}
+.locked-heading strong{display:block;color:#294b37;font-family:Outfit,sans-serif;font-size:15px;line-height:1.2;margin:2px 0 4px}
+.locked-heading p{margin:0;color:#8da094;font-size:11px;line-height:1.45}
+.public-week{display:flex;gap:18px;flex-wrap:wrap;padding:11px 0;border-top:1px solid #edf1eb;border-bottom:1px solid #edf1eb;margin-bottom:15px;color:#4a765a;font-size:11px;font-weight:800}
+.public-week span{display:inline-flex;align-items:center;gap:6px}
+.locked-state .primary-button{margin-top:2px}
+.switch-hint{font-size:10px;line-height:1.45;color:#8b9f91;margin:11px 0 0}
+.password-label{margin-top:16px}
+.password-field{position:relative}
+.modal form .password-field input{padding-right:42px}
+.password-field button{position:absolute;top:0;right:0;height:43px;width:40px;border:0;background:transparent;color:#7a9882;display:grid;place-items:center}
+.password-field button:hover{color:#2c704a}
+.modal form input:not(#class-name):not(#delete-confirm-name){text-transform:none}
+.modal{max-height:calc(100dvh - 30px);overflow-y:auto}
+.danger-link{width:100%;border:0;border-top:1px solid #edf0eb;background:transparent;color:#bd655b;display:flex;align-items:center;justify-content:center;gap:7px;margin-top:20px;padding:17px 0 0;font-size:11px;font-weight:800}
+.danger-link:hover{color:#963f37}
+.danger-icon{background:#fff0eb;color:#c67468}
+.danger-button{width:100%;min-height:41px;display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:6px;background:#ba574c;color:#fff;font-size:12px;font-weight:800}
+.danger-button:hover:not(:disabled){background:#993e36}
+@media(max-width:700px){.session-label{display:none}}
+@media(max-width:480px){.class-session-bar{align-items:flex-start;flex-wrap:wrap}.class-session-actions{margin-left:auto}.class-session-actions button{font-size:9px}.locked-heading strong{font-size:14px}.locked-heading p{font-size:10px}}
