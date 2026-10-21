@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -13,9 +13,12 @@ const origin = 'http://localhost:5174'
 const seedPassword = 'SeedClass#2026'
 const newPassword = 'NewClass#2026'
 const changedPassword = 'UpdatedClass#2026'
+const adminTestPassword = 'PrincipalTest#2026'
+const changedAdminPassword = 'PrincipalUpdated#2026'
+const seedCookies = new Map()
 const server = spawn(process.execPath, [join(root, '.output', 'server', 'index.mjs')], {
   cwd: root,
-  env: { ...process.env, PORT: '5174', DATA_FILE: join(temporary, 'school.json'), DATABASE_URL: '', POSTGRES_URL: '' },
+  env: { ...process.env, PORT: '5174', DATA_FILE: join(temporary, 'school.json'), DATABASE_URL: '', POSTGRES_URL: '', ADMIN_BOOTSTRAP_PASSWORD: adminTestPassword },
   stdio: 'pipe',
 })
 let browser
@@ -52,6 +55,7 @@ try {
   const week = schoolWeek()
   for (const [name, lunches, items] of [['6AB', 39, 54], ['5B', 31, 43], ['3C', 23, 29]]) {
     const cookie = await postClass(name, seedPassword)
+    seedCookies.set(name, cookie)
     const response = await fetch(`${origin}/api/classes/${name}/weeks/${week}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: cookie },
       body: JSON.stringify({ lunches, items }),
@@ -83,6 +87,40 @@ try {
   const overflow = await mobile.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
   assert.ok(overflow <= 0, `Mobile page overflows by ${overflow}px.`)
   await mobile.screenshot({ path: join(screenshots, 'mobile.png'), fullPage: true })
+
+  const dataFile = join(temporary, 'school.json')
+  const legacyData = JSON.parse(await readFile(dataFile, 'utf8'))
+  legacyData.classes.push({ name: '9Z', sample: false, createdAt: new Date().toISOString(), weeks: {} })
+  await writeFile(dataFile, JSON.stringify(legacyData))
+  await page.reload()
+  await page.locator('#class-select').selectOption('9Z')
+  assert.match(await page.locator('.locked-state').innerText(), /Claim Class 9Z/)
+  assert.equal((await page.request.post(`${origin}/api/classes/9Z/claim`, { data: { password: 'short' } })).status(), 400)
+  const foreignClaim = await fetch(`${origin}/api/classes/9Z/claim`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://other.example' },
+    body: JSON.stringify({ password: seedPassword }),
+  })
+  assert.equal(foreignClaim.status, 403)
+  await page.getByRole('button', { name: 'Claim Class 9Z' }).click()
+  await page.locator('#claim-password').fill(seedPassword)
+  await page.locator('#confirm-claim-password').fill('different-password')
+  await page.getByRole('button', { name: 'Claim class', exact: true }).click()
+  assert.match(await page.locator('.form-error').innerText(), /do not match/i)
+  await page.locator('#confirm-claim-password').fill(seedPassword)
+  await page.getByRole('button', { name: 'Claim class', exact: true }).click()
+  await page.locator('.modal').waitFor({ state: 'hidden' })
+  assert.equal(await page.locator('.stepper').count(), 2)
+  assert.equal((await page.request.post(`${origin}/api/classes/9Z/claim`, { data: { password: newPassword } })).status(), 409)
+  const claimedData = await (await fetch(`${origin}/api/dashboard`)).json()
+  assert.equal(claimedData.classes.find(entry => entry.name === '9Z')?.claimable, false)
+  assert.ok(!JSON.stringify(claimedData).includes('passwordHash'))
+  await page.getByRole('button', { name: 'Manage' }).click()
+  await page.getByRole('button', { name: 'Delete this class' }).click()
+  await page.locator('#delete-confirm-name').fill('9Z')
+  await page.locator('#delete-password').fill(seedPassword)
+  await page.getByRole('button', { name: 'Delete class permanently' }).click()
+  await page.locator('.modal').waitFor({ state: 'hidden' })
+  await page.locator('#class-select').selectOption('6AB')
 
   const anonymousWrite = await fetch(`${origin}/api/classes/6AB/weeks/${week}`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lunches: 1, items: 1 }),
@@ -179,8 +217,82 @@ try {
   await page.locator('.modal').waitFor({ state: 'hidden' })
   await waitForTotal(page, '132')
   assert.ok(!(await page.locator('.leader-list').innerText()).includes('Class 7D'))
+
+  const classCannotAdmin = await fetch(`${origin}/api/admin/goal`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: seedCookies.get('5B') },
+    body: JSON.stringify({ goal: 1500 }),
+  })
+  assert.equal(classCannotAdmin.status, 401)
+  await page.locator('.footer-admin-link').click()
+  await page.locator('#admin-login-password').fill('incorrect-password')
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  assert.match(await page.locator('.form-error').innerText(), /incorrect/i)
+  await page.locator('#admin-login-password').fill(adminTestPassword)
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await page.locator('.modal').waitFor({ state: 'hidden' })
+  await page.locator('#admin').waitFor()
+  await page.screenshot({ path: join(screenshots, 'principal-desktop.png'), fullPage: true })
+  await page.setViewportSize({ width: 390, height: 844 })
+  const adminOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+  assert.ok(adminOverflow <= 0, `Principal mobile page overflows by ${adminOverflow}px.`)
+  await page.screenshot({ path: join(screenshots, 'principal-mobile.png'), fullPage: true })
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.locator('#school-goal').fill('1500')
+  await page.getByRole('button', { name: 'Save goal' }).click()
+  await page.waitForFunction(() => document.querySelector('.hero-number')?.textContent?.includes('1,500'))
+  await page.getByRole('button', { name: 'Edit Class 5B' }).click()
+  assert.equal(await page.locator('#class-select').inputValue(), '5B')
+  assert.equal(await page.locator('.stepper').count(), 2)
+  await page.locator('.stepper input').nth(1).fill('45')
+  await page.locator('.save-button').click()
+  await waitForTotal(page, '134')
+  await page.getByRole('button', { name: 'Reset Class 5B password' }).click()
+  await page.locator('#admin-class-password').fill(changedPassword)
+  await page.locator('#admin-class-confirm').fill(changedPassword)
+  await page.getByRole('button', { name: 'Reset password' }).click()
+  await page.locator('.modal').waitFor({ state: 'hidden' })
+  const oldClassSession = await fetch(`${origin}/api/classes/5B/weeks/${week}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: seedCookies.get('5B') },
+    body: JSON.stringify({ lunches: 1, items: 1 }),
+  })
+  assert.equal(oldClassSession.status, 401)
+  const oldClassLogin = await fetch(`${origin}/api/auth/login`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: '5B', password: seedPassword }),
+  })
+  assert.equal(oldClassLogin.status, 401)
+  const newClassLogin = await fetch(`${origin}/api/auth/login`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: '5B', password: changedPassword }),
+  })
+  assert.equal(newClassLogin.status, 200)
+  await postClass('8R', seedPassword)
+  await page.reload()
+  await page.getByRole('button', { name: 'Delete Class 8R' }).click()
+  await page.locator('#admin-delete-confirm').fill('8R')
+  await page.getByRole('button', { name: 'Delete class permanently' }).click()
+  await page.locator('.modal').waitFor({ state: 'hidden' })
+  assert.ok(!(await page.locator('.leader-list').innerText()).includes('Class 8R'))
+  await page.getByRole('button', { name: 'Change principal password' }).click()
+  await page.locator('#admin-current-password').fill(adminTestPassword)
+  await page.locator('#admin-updated-password').fill(changedAdminPassword)
+  await page.locator('#admin-confirm-password').fill(changedAdminPassword)
+  await page.getByRole('button', { name: 'Update password' }).click()
+  await page.locator('.modal').waitFor({ state: 'hidden' })
+  await page.locator('#admin').getByRole('button', { name: 'Sign out' }).click()
+  await page.locator('#admin').waitFor({ state: 'hidden' })
+  const oldAdminLogin = await fetch(`${origin}/api/admin/login`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: adminTestPassword }),
+  })
+  assert.equal(oldAdminLogin.status, 401)
+  const newAdminLogin = await fetch(`${origin}/api/admin/login`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: changedAdminPassword }),
+  })
+  assert.equal(newAdminLogin.status, 200)
   assert.deepEqual(errors, [])
-  console.log('Public, auth, visual, and class-management checks passed. Screenshots: .qa/desktop.png, .qa/mobile.png')
+  console.log('Public, claim, class, principal, and visual checks passed. Screenshots: .qa/desktop.png, .qa/mobile.png')
 } finally {
   await browser?.close()
   server.kill()

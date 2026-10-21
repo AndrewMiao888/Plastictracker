@@ -9,7 +9,7 @@ import {
 } from '@lucide/vue'
 
 type WeekEntry = { lunches: number; items: number; updatedAt: string }
-type ClassEntry = { name: string; sample: boolean; createdAt: string; weeks: Record<string, WeekEntry> }
+type ClassEntry = { name: string; sample: boolean; claimable: boolean; createdAt: string; weeks: Record<string, WeekEntry> }
 type Dashboard = { goal: number; classes: ClassEntry[] }
 type Celebration = { title: string; detail: string }
 
@@ -70,6 +70,7 @@ const badges: { name: string; description: string; icon: Component; earned: (ent
 
 const { data: dashboard, error: loadError, refresh } = await useFetch<Dashboard>('/api/dashboard', { key: 'dashboard' })
 const { data: authSession, refresh: refreshAuth } = await useFetch<{ className: string | null }>('/api/auth/session', { key: 'auth-session' })
+const { data: adminSession, refresh: refreshAdmin } = await useFetch<{ admin: boolean }>('/api/admin/session', { key: 'admin-session' })
 const selectedName = ref(authSession.value?.className || dashboard.value?.classes[0]?.name || '')
 const week = ref(currentWeek())
 const lunches = ref('0')
@@ -84,6 +85,10 @@ const formError = ref('')
 const showLogin = ref(false)
 const loginPassword = ref('')
 const loginError = ref('')
+const showClaim = ref(false)
+const claimPassword = ref('')
+const confirmClaimPassword = ref('')
+const claimError = ref('')
 const showManage = ref(false)
 const currentPassword = ref('')
 const updatedPassword = ref('')
@@ -93,12 +98,31 @@ const showDelete = ref(false)
 const deletePassword = ref('')
 const deleteConfirmName = ref('')
 const deleteError = ref('')
+const showAdminLogin = ref(false)
+const adminPassword = ref('')
+const adminLoginError = ref('')
+const adminGoal = ref(String(dashboard.value?.goal || 1000))
+const adminGoalError = ref('')
+const showAdminReset = ref(false)
+const adminTargetName = ref('')
+const adminClassPassword = ref('')
+const adminConfirmPassword = ref('')
+const adminResetError = ref('')
+const showAdminDelete = ref(false)
+const adminDeleteConfirm = ref('')
+const adminDeleteError = ref('')
+const showAdminPassword = ref(false)
+const currentAdminPassword = ref('')
+const updatedAdminPassword = ref('')
+const confirmAdminPassword = ref('')
+const adminPasswordError = ref('')
 const toast = ref('')
 const celebration = ref<Celebration | null>(null)
 
 const selected = computed(() => dashboard.value?.classes.find(entry => entry.name === selectedName.value))
 const signedInName = computed(() => authSession.value?.className || null)
-const canEdit = computed(() => !!selected.value && signedInName.value === selected.value.name)
+const isAdmin = computed(() => !!adminSession.value?.admin)
+const canEdit = computed(() => !!selected.value && (isAdmin.value || signedInName.value === selected.value.name))
 const existing = computed(() => selected.value?.weeks[week.value])
 watch([selected, week], () => {
   lunches.value = String(existing.value?.lunches ?? 0)
@@ -237,6 +261,33 @@ async function loginClass() {
   finally { busy.value = false }
 }
 
+async function claimSelectedClass() {
+  if (!selected.value?.claimable) return
+  if (claimPassword.value.length < 10 || claimPassword.value.length > 128 || claimPassword.value.trim().length < 10) {
+    claimError.value = 'Choose a password with at least 10 characters.'
+    return
+  }
+  if (claimPassword.value !== confirmClaimPassword.value) {
+    claimError.value = 'Passwords do not match.'
+    return
+  }
+  busy.value = true
+  claimError.value = ''
+  const name = selected.value.name
+  try {
+    await request(`/api/classes/${name}/claim`, { method: 'POST', body: { password: claimPassword.value } })
+    await refreshAuth()
+    await reload()
+    showClaim.value = false
+    claimPassword.value = ''
+    confirmClaimPassword.value = ''
+    toast.value = `Class ${name} is yours to manage.`
+  } catch (error) {
+    claimError.value = (error as Error).message
+    await reload()
+  } finally { busy.value = false }
+}
+
 async function logoutClass() {
   busy.value = true
   try {
@@ -244,6 +295,116 @@ async function logoutClass() {
     await refreshAuth()
     toast.value = 'Signed out. School progress is still public.'
   } catch (error) { toast.value = (error as Error).message }
+  finally { busy.value = false }
+}
+
+async function loginAdmin() {
+  busy.value = true
+  adminLoginError.value = ''
+  try {
+    await request('/api/admin/login', { method: 'POST', body: { password: adminPassword.value } })
+    await refreshAdmin()
+    showAdminLogin.value = false
+    adminPassword.value = ''
+    toast.value = 'Principal access is active.'
+    window.setTimeout(() => scrollTo('admin'), 100)
+  } catch (error) { adminLoginError.value = (error as Error).message }
+  finally { busy.value = false }
+}
+
+async function logoutAdmin() {
+  busy.value = true
+  try {
+    await request('/api/admin/logout', { method: 'POST' })
+    await refreshAdmin()
+    toast.value = 'Principal access signed out.'
+  } catch (error) { toast.value = (error as Error).message }
+  finally { busy.value = false }
+}
+
+async function saveAdminGoal() {
+  const goalValue = Number(adminGoal.value)
+  if (!Number.isInteger(goalValue) || goalValue < 1 || goalValue > 1_000_000) {
+    adminGoalError.value = 'Choose a whole number from 1 to 1,000,000.'
+    return
+  }
+  busy.value = true
+  adminGoalError.value = ''
+  try {
+    await request('/api/admin/goal', { method: 'PUT', body: { goal: goalValue } })
+    await reload()
+    toast.value = 'School goal updated.'
+  } catch (error) { adminGoalError.value = (error as Error).message }
+  finally { busy.value = false }
+}
+
+function openAdminReset(name: string) {
+  adminTargetName.value = name
+  adminClassPassword.value = ''
+  adminConfirmPassword.value = ''
+  adminResetError.value = ''
+  showAdminReset.value = true
+}
+
+async function resetAdminClassPassword() {
+  if (adminClassPassword.value.length < 10 || adminClassPassword.value.length > 128 || adminClassPassword.value.trim().length < 10) {
+    adminResetError.value = 'Choose a password with at least 10 characters.'
+    return
+  }
+  if (adminClassPassword.value !== adminConfirmPassword.value) {
+    adminResetError.value = 'Passwords do not match.'
+    return
+  }
+  busy.value = true
+  adminResetError.value = ''
+  try {
+    await request(`/api/admin/classes/${adminTargetName.value}/password`, { method: 'PUT', body: { password: adminClassPassword.value } })
+    await reload()
+    showAdminReset.value = false
+    adminClassPassword.value = ''
+    adminConfirmPassword.value = ''
+    toast.value = `Class ${adminTargetName.value}'s password changed. Its other sessions were signed out.`
+  } catch (error) { adminResetError.value = (error as Error).message }
+  finally { busy.value = false }
+}
+
+async function deleteAdminClass() {
+  if (adminDeleteConfirm.value.toUpperCase() !== adminTargetName.value) {
+    adminDeleteError.value = 'Type the class name to confirm deletion.'
+    return
+  }
+  busy.value = true
+  adminDeleteError.value = ''
+  try {
+    await request(`/api/admin/classes/${adminTargetName.value}`, { method: 'DELETE' })
+    await reload()
+    showAdminDelete.value = false
+    adminDeleteConfirm.value = ''
+    toast.value = `Class ${adminTargetName.value} and its entries were deleted.`
+  } catch (error) { adminDeleteError.value = (error as Error).message }
+  finally { busy.value = false }
+}
+
+async function changeAdminPassword() {
+  if (updatedAdminPassword.value.length < 10 || updatedAdminPassword.value.length > 128 || updatedAdminPassword.value.trim().length < 10) {
+    adminPasswordError.value = 'Choose a password with at least 10 characters.'
+    return
+  }
+  if (updatedAdminPassword.value !== confirmAdminPassword.value) {
+    adminPasswordError.value = 'Passwords do not match.'
+    return
+  }
+  busy.value = true
+  adminPasswordError.value = ''
+  try {
+    await request('/api/admin/password', { method: 'PUT', body: { currentPassword: currentAdminPassword.value, newPassword: updatedAdminPassword.value } })
+    await refreshAdmin()
+    showAdminPassword.value = false
+    currentAdminPassword.value = ''
+    updatedAdminPassword.value = ''
+    confirmAdminPassword.value = ''
+    toast.value = 'Principal password updated. Other principal sessions were signed out.'
+  } catch (error) { adminPasswordError.value = (error as Error).message }
   finally { busy.value = false }
 }
 
@@ -302,22 +463,23 @@ function changeCount(current: string, amount: number) {
   <div v-else class="app-shell">
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark"><Leaf :size="25" :stroke-width="2.6" /></span><span>plastic<span class="brand-accent">free.</span><small>SCHOOL TRACKER</small></span></div>
-      <button v-if="signedInName" class="mobile-sample-button" @click="selectedName = signedInName; scrollTo('check-in')"><ShieldCheck :size="15" /> Class {{ signedInName }}</button>
+      <button v-if="isAdmin" class="mobile-sample-button" @click="scrollTo('admin')"><ShieldCheck :size="15" /> Principal</button><button v-else-if="signedInName" class="mobile-sample-button" @click="selectedName = signedInName; scrollTo('check-in')"><ShieldCheck :size="15" /> Class {{ signedInName }}</button><button v-else class="mobile-sample-button" @click="showAdminLogin = true"><KeyRound :size="15" /> Principal</button>
       <div class="side-group"><div class="side-label">WORKSPACE</div>
         <button class="side-link active" @click="scrollTo('overview')"><span class="side-icon"><Earth :size="18" /></span>Overview</button>
         <button class="side-link" @click="scrollTo('check-in')"><span class="side-icon"><CalendarDays :size="18" /></span>Weekly check-in</button>
         <button class="side-link" @click="scrollTo('leaderboard')"><span class="side-icon"><Trophy :size="18" /></span>Leaderboard</button>
         <button class="side-link" @click="scrollTo('achievements')"><span class="side-icon"><Award :size="18" /></span>Achievements</button>
+        <button v-if="isAdmin" class="side-link" @click="scrollTo('admin')"><span class="side-icon"><Settings2 :size="18" /></span>Principal panel</button>
       </div>
       <div class="side-group class-group"><div class="side-label side-label-row">SCHOOL CLASSES <span>{{ dashboard.classes.length }}</span></div>
         <button v-for="entry in dashboard.classes.slice(0, 6)" :key="entry.name" class="class-link" :class="{ selected: selectedName === entry.name }" @click="selectedName = entry.name; scrollTo('check-in')"><span class="class-mini-icon">{{ entry.name[0] }}</span>Class {{ entry.name }}<span v-if="selectedName === entry.name" class="selected-dot" /></button>
         <button class="add-side" @click="showCreate = true"><Plus :size="16" /> Add a class</button>
       </div>
-      <div class="sidebar-bottom"><div class="mission-icon"><Recycle :size="23" /></div><strong>Every item matters.</strong><p>One school day at a time, we're making a difference.</p><button v-if="signedInName" @click="selectedName = signedInName; scrollTo('check-in')">My class <ArrowRight :size="14" /></button></div>
+      <div class="sidebar-bottom"><div class="mission-icon"><Recycle :size="23" /></div><strong>Every item matters.</strong><p>One school day at a time, we're making a difference.</p><button v-if="signedInName" @click="selectedName = signedInName; scrollTo('check-in')">My class <ArrowRight :size="14" /></button><button class="principal-side-link" @click="isAdmin ? scrollTo('admin') : showAdminLogin = true"><KeyRound :size="14" /> {{ isAdmin ? 'Principal panel' : 'Principal sign in' }}</button></div>
     </aside>
 
     <main id="overview" class="main">
-      <div class="topbar"><div class="breadcrumb">School dashboard <ChevronRight :size="14" /> <strong>Overview</strong></div><div class="top-actions"><span v-if="signedInName" class="session-label"><ShieldCheck :size="15" /> Editing Class {{ signedInName }}</span><span class="date-pill"><CalendarDays :size="15" /> Week of {{ weekLabel(currentWeek()) }}</span><span class="top-avatar"><Leaf :size="17" /></span></div></div>
+      <div class="topbar"><div class="breadcrumb">School dashboard <ChevronRight :size="14" /> <strong>Overview</strong></div><div class="top-actions"><span v-if="isAdmin" class="session-label"><ShieldCheck :size="15" /> Principal access</span><span v-else-if="signedInName" class="session-label"><ShieldCheck :size="15" /> Editing Class {{ signedInName }}</span><span class="date-pill"><CalendarDays :size="15" /> Week of {{ weekLabel(currentWeek()) }}</span><span class="top-avatar"><Leaf :size="17" /></span></div></div>
       <div class="content">
         <header class="page-heading"><div><div class="eyebrow"><span class="eyebrow-dot" /> ST ANDREW'S PLASTIC-FREE DAY <span v-if="hasSamples" class="sample-badge">SAMPLE DATA</span></div><h1>Small swaps. Big impact.</h1><p>Every lunch counts. See how we're doing together.</p></div><button class="primary-button heading-button" @click="showCreate = true"><Plus :size="18" /> Create class</button></header>
 
@@ -340,12 +502,12 @@ function changeCount(current: string, amount: number) {
           <section id="check-in" class="surface checkin"><div class="section-heading"><div><div class="section-kicker">MAKE IT COUNT</div><h2>Weekly check-in</h2><p>Record your class's progress for the week.</p></div><span class="heading-icon green"><CalendarDays :size="21" /></span></div>
             <div v-if="selected">
               <div class="form-top"><label class="field-label" for="class-select">VIEW CLASS</label><div class="select-wrap"><select id="class-select" v-model="selectedName"><option v-for="entry in dashboard.classes" :key="entry.name" :value="entry.name">Class {{ entry.name }}</option></select><ChevronDown :size="18" /></div><div class="week-picker"><span>Week of <strong>{{ weekLabel(week) }}</strong></span><div><button type="button" title="Previous week" aria-label="Previous week" @click="week = shiftWeek(week, -1)"><ChevronLeft :size="18" /></button><button type="button" title="Next week" aria-label="Next week" :disabled="week >= currentWeek()" @click="week = shiftWeek(week, 1)"><ChevronRight :size="18" /></button></div></div></div>
-              <div class="class-session-bar"><span v-if="canEdit" class="class-session-state editing"><ShieldCheck :size="15" /> Editing Class {{ selected.name }}</span><span v-else class="class-session-state"><LockKeyhole :size="15" /> Public view</span><div v-if="canEdit" class="class-session-actions"><button type="button" title="Manage class and password" @click="showManage = true"><Settings2 :size="15" /> Manage</button><button type="button" title="Sign out of class" :disabled="busy" @click="logoutClass"><LogOut :size="15" /> Sign out</button></div></div>
+              <div class="class-session-bar"><span v-if="canEdit" class="class-session-state editing"><ShieldCheck :size="15" /> {{ isAdmin ? 'Principal editing' : 'Editing' }} Class {{ selected.name }}</span><span v-else class="class-session-state"><LockKeyhole :size="15" /> Public view</span><div v-if="signedInName === selected.name" class="class-session-actions"><button type="button" title="Manage class and password" @click="showManage = true"><Settings2 :size="15" /> Manage</button><button type="button" title="Sign out of class" :disabled="busy" @click="logoutClass"><LogOut :size="15" /> Sign out</button></div><div v-else-if="isAdmin" class="class-session-actions"><button type="button" @click="scrollTo('admin')"><Settings2 :size="15" /> Principal panel</button></div></div>
               <form v-if="canEdit" @submit.prevent="saveWeek"><div class="entry-fields"><div class="counter-row"><span class="counter-icon peach"><Sandwich :size="21" /></span><span class="counter-label"><strong>Plastic-free lunches</strong><small>Lunches packed this week</small></span><div class="stepper"><button type="button" aria-label="Decrease Plastic-free lunches" @click="lunches = changeCount(lunches, -1)"><Minus :size="15" /></button><input v-model="lunches" type="number" min="0" max="10000" step="1" aria-label="Plastic-free lunches"><button type="button" aria-label="Increase Plastic-free lunches" @click="lunches = changeCount(lunches, 1)"><Plus :size="15" /></button></div></div>
                 <div class="counter-row"><span class="counter-icon mint"><PackageCheck :size="21" /></span><span class="counter-label"><strong>Plastic items saved</strong><small>Items avoided this week</small></span><div class="stepper"><button type="button" aria-label="Decrease Plastic items saved" @click="items = changeCount(items, -1)"><Minus :size="15" /></button><input v-model="items" type="number" min="0" max="10000" step="1" aria-label="Plastic items saved"><button type="button" aria-label="Increase Plastic items saved" @click="items = changeCount(items, 1)"><Plus :size="15" /></button></div></div></div>
               <div class="form-footer"><span class="edit-hint"><CircleCheck :size="16" /> {{ existing ? "Editing this week's entry" : 'Ready for a new entry' }}</span><div class="form-actions"><button v-if="existing" class="delete-button" type="button" title="Delete this week's entry" aria-label="Delete this week's entry" :disabled="busy" @click="deleteWeek"><Trash2 :size="17" /></button><button class="primary-button save-button" :disabled="busy" type="submit"><Save :size="17" /> {{ busy ? 'Saving...' : 'Save week' }}</button></div></div>
               </form>
-              <div v-else class="locked-state"><div class="locked-heading"><span><LockKeyhole :size="22" /></span><div><strong>Sign in to edit Class {{ selected.name }}</strong><p>Everyone can follow this class. Its password protects weekly entries and class settings.</p></div></div><div v-if="existing" class="public-week"><span><Sandwich :size="16" /> {{ existing.lunches }} lunches</span><span><PackageCheck :size="16" /> {{ existing.items }} items saved</span></div><button class="primary-button" @click="showLogin = true; loginError = ''"><LogIn :size="17" /> Sign in to Class {{ selected.name }}</button><p v-if="signedInName" class="switch-hint">You're signed in to Class {{ signedInName }}. Choose it above to edit, or sign in to this class.</p></div>
+              <div v-else class="locked-state"><div class="locked-heading"><span><LockKeyhole :size="22" /></span><div><strong>{{ selected.claimable ? `Claim Class ${selected.name}` : `Sign in to edit Class ${selected.name}` }}</strong><p>{{ selected.claimable ? 'This class has no password yet. A member of the class can set one to manage its entries.' : 'Everyone can follow this class. Its password protects weekly entries and class settings.' }}</p></div></div><div v-if="existing" class="public-week"><span><Sandwich :size="16" /> {{ existing.lunches }} lunches</span><span><PackageCheck :size="16" /> {{ existing.items }} items saved</span></div><button v-if="selected.claimable" class="primary-button" @click="showClaim = true; claimError = ''"><KeyRound :size="17" /> Claim Class {{ selected.name }}</button><button v-else class="primary-button" @click="showLogin = true; loginError = ''"><LogIn :size="17" /> Sign in to Class {{ selected.name }}</button><p v-if="signedInName" class="switch-hint">You're signed in to Class {{ signedInName }}. Choose it above to edit, or sign in to this class.</p></div>
             </div><div v-else class="empty-state"><span><UsersRound :size="28" /></span><h3>Start with a class</h3><p>Create your first class to begin logging plastic-free days.</p><button class="primary-button" @click="showCreate = true"><Plus :size="17" /> Create class</button></div>
           </section>
 
@@ -360,13 +522,19 @@ function changeCount(current: string, amount: number) {
         </section>
 
         <section class="activity-section"><div class="section-title-row"><div><div class="section-kicker">LATEST UPDATES</div><h2>Recent activity</h2></div><span class="activity-count">{{ activities.length }} recent entries</span></div><div class="surface activity-table"><div class="table-head"><span>CLASS</span><span>WEEK</span><span>LUNCHES</span><span>ITEMS SAVED</span></div><template v-if="activities.length"><div v-for="activity in activities" :key="`${activity.name}-${activity.date}`" class="table-row"><span class="table-class"><span class="table-avatar">{{ activity.name[0] }}</span>Class {{ activity.name }}</span><span>Week of {{ weekLabel(activity.date) }}</span><span>{{ activity.lunches }}</span><span class="table-items">+{{ activity.items }} <ArrowUpRight :size="15" /></span></div></template><div v-else class="table-empty">No weeks logged yet. Your first entry will appear here.</div></div></section>
-        <footer class="footer"><span><Leaf :size="15" /> Plastic-Free Day</span><span>Small choices add up.</span></footer>
+        <section v-if="isAdmin" id="admin" class="admin-section"><div class="section-title-row"><div><div class="section-kicker">SCHOOL CONTROL</div><h2>Principal panel</h2></div><button class="admin-text-button" :disabled="busy" @click="logoutAdmin"><LogOut :size="16" /> Sign out</button></div><div class="admin-grid"><div class="surface admin-settings"><h3>School settings</h3><form @submit.prevent="saveAdminGoal"><label class="field-label" for="school-goal">PLASTIC ITEMS GOAL</label><div class="admin-goal-row"><input id="school-goal" v-model="adminGoal" type="number" min="1" max="1000000" step="1"><button class="primary-button" type="submit" :disabled="busy"><Save :size="16" /> Save goal</button></div><div v-if="adminGoalError" class="form-error" role="alert">{{ adminGoalError }}</div></form><button class="admin-text-button admin-password-action" @click="showAdminPassword = true"><KeyRound :size="16" /> Change principal password</button></div><div class="surface admin-classes"><div class="admin-classes-head"><h3>Classes <span>{{ dashboard.classes.length }}</span></h3><button class="admin-text-button" @click="showCreate = true"><Plus :size="16" /> Add class</button></div><div v-if="dashboard.classes.length" class="admin-class-list"><div v-for="entry in dashboard.classes" :key="entry.name" class="admin-class-row"><span class="admin-class-name"><span class="table-avatar">{{ entry.name[0] }}</span><strong>{{ entry.name }}</strong><small>{{ entry.claimable ? 'Unclaimed' : `${totals(entry).items} items saved` }}</small></span><div class="admin-row-actions"><button title="Edit weekly entries" :aria-label="`Edit Class ${entry.name}`" @click="selectedName = entry.name; scrollTo('check-in')"><CalendarDays :size="16" /></button><button title="Reset class password" :aria-label="`Reset Class ${entry.name} password`" @click="openAdminReset(entry.name)"><KeyRound :size="16" /></button><button class="danger" title="Delete class" :aria-label="`Delete Class ${entry.name}`" @click="adminTargetName = entry.name; adminDeleteConfirm = ''; adminDeleteError = ''; showAdminDelete = true"><Trash2 :size="16" /></button></div></div></div><p v-else class="admin-empty">No classes yet.</p></div></div></section>
+        <footer class="footer"><span><Leaf :size="15" /> Plastic-Free Day</span><button v-if="!isAdmin" class="footer-admin-link" @click="showAdminLogin = true">Principal sign in</button><span v-else>Small choices add up.</span></footer>
       </div>
     </main>
 
     <div v-if="toast" class="toast" role="status"><CircleCheck :size="19" />{{ toast }}<button aria-label="Dismiss" @click="toast = ''"><X :size="16" /></button></div>
     <div v-if="showCreate" class="modal-backdrop" @mousedown.self="showCreate = false"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="create-title"><button class="modal-close" aria-label="Close" @click="showCreate = false"><X :size="20" /></button><span class="modal-icon"><UsersRound :size="25" /></span><div class="section-kicker">JOIN THE MOVEMENT</div><h2 id="create-title">Create a class</h2><p>Set a class name and a password your group can share.</p><form @submit.prevent="createClass"><label class="field-label" for="class-name">CLASS NAME</label><input id="class-name" v-model="newName" autofocus placeholder="e.g. 5B" maxlength="4" autocapitalize="characters" :aria-invalid="!!formError" @input="formError = ''"><small class="field-help">One digit followed by 1 to 3 letters.</small><label class="field-label password-label" for="new-password">CLASS PASSWORD</label><div class="password-field"><input id="new-password" v-model="newPassword" :type="showPassword ? 'text' : 'password'" minlength="10" maxlength="128" autocomplete="new-password" placeholder="At least 10 characters" @input="formError = ''"><button type="button" :aria-label="showPassword ? 'Hide password' : 'Show password'" @click="showPassword = !showPassword"><EyeOff v-if="showPassword" :size="17" /><Eye v-else :size="17" /></button></div><label class="field-label password-label" for="confirm-password">CONFIRM PASSWORD</label><input id="confirm-password" v-model="confirmPassword" :type="showPassword ? 'text' : 'password'" autocomplete="new-password" placeholder="Repeat password" @input="formError = ''"><div v-if="formError" class="form-error" role="alert">{{ formError }}</div><button class="primary-button modal-submit" type="submit" :disabled="busy"><Plus :size="18" /> {{ busy ? 'Creating...' : 'Create class' }}</button></form></div></div>
     <div v-if="showLogin && selected" class="modal-backdrop" @mousedown.self="showLogin = false"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="login-title"><button class="modal-close" aria-label="Close" @click="showLogin = false"><X :size="20" /></button><span class="modal-icon"><LockKeyhole :size="25" /></span><div class="section-kicker">CLASS ACCESS</div><h2 id="login-title">Sign in to Class {{ selected.name }}</h2><p>Use your class password to edit weekly entries.</p><form @submit.prevent="loginClass"><label class="field-label" for="login-password">PASSWORD</label><div class="password-field"><input id="login-password" v-model="loginPassword" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" autofocus @input="loginError = ''"><button type="button" :aria-label="showPassword ? 'Hide password' : 'Show password'" @click="showPassword = !showPassword"><EyeOff v-if="showPassword" :size="17" /><Eye v-else :size="17" /></button></div><div v-if="loginError" class="form-error" role="alert">{{ loginError }}</div><button class="primary-button modal-submit" type="submit" :disabled="busy"><LogIn :size="17" /> {{ busy ? 'Signing in...' : 'Sign in' }}</button></form></div></div>
+    <div v-if="showClaim && selected" class="modal-backdrop" @mousedown.self="showClaim = false"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="claim-title"><button class="modal-close" aria-label="Close" @click="showClaim = false"><X :size="20" /></button><span class="modal-icon"><KeyRound :size="25" /></span><div class="section-kicker">FIRST-TIME SETUP</div><h2 id="claim-title">Claim Class {{ selected.name }}</h2><p>Set a password your class can share. The first person to claim this class will control its entries and settings.</p><form @submit.prevent="claimSelectedClass"><label class="field-label" for="claim-password">CLASS PASSWORD</label><div class="password-field"><input id="claim-password" v-model="claimPassword" :type="showPassword ? 'text' : 'password'" minlength="10" maxlength="128" autocomplete="new-password" autofocus @input="claimError = ''"><button type="button" :aria-label="showPassword ? 'Hide password' : 'Show password'" @click="showPassword = !showPassword"><EyeOff v-if="showPassword" :size="17" /><Eye v-else :size="17" /></button></div><label class="field-label password-label" for="confirm-claim-password">CONFIRM PASSWORD</label><input id="confirm-claim-password" v-model="confirmClaimPassword" :type="showPassword ? 'text' : 'password'" autocomplete="new-password" @input="claimError = ''"><div v-if="claimError" class="form-error" role="alert">{{ claimError }}</div><button class="primary-button modal-submit" type="submit" :disabled="busy || !selected.claimable"><KeyRound :size="17" /> {{ busy ? 'Claiming...' : 'Claim class' }}</button></form></div></div>
+    <div v-if="showAdminLogin" class="modal-backdrop" @mousedown.self="showAdminLogin = false"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="admin-login-title"><button class="modal-close" aria-label="Close" @click="showAdminLogin = false"><X :size="20" /></button><span class="modal-icon"><ShieldCheck :size="25" /></span><div class="section-kicker">SCHOOL ACCESS</div><h2 id="admin-login-title">Principal sign in</h2><p>Use the principal password to manage the school tracker.</p><form @submit.prevent="loginAdmin"><label class="field-label" for="admin-login-password">PASSWORD</label><div class="password-field"><input id="admin-login-password" v-model="adminPassword" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" autofocus @input="adminLoginError = ''"><button type="button" :aria-label="showPassword ? 'Hide password' : 'Show password'" @click="showPassword = !showPassword"><EyeOff v-if="showPassword" :size="17" /><Eye v-else :size="17" /></button></div><div v-if="adminLoginError" class="form-error" role="alert">{{ adminLoginError }}</div><button class="primary-button modal-submit" type="submit" :disabled="busy"><LogIn :size="17" /> {{ busy ? 'Signing in...' : 'Sign in' }}</button></form></div></div>
+    <div v-if="showAdminReset" class="modal-backdrop" @mousedown.self="showAdminReset = false"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="admin-reset-title"><button class="modal-close" aria-label="Close" @click="showAdminReset = false"><X :size="20" /></button><span class="modal-icon"><KeyRound :size="25" /></span><div class="section-kicker">CLASS ACCESS</div><h2 id="admin-reset-title">Reset Class {{ adminTargetName }}</h2><p>This replaces the class password and signs out its existing devices.</p><form @submit.prevent="resetAdminClassPassword"><label class="field-label" for="admin-class-password">NEW CLASS PASSWORD</label><input id="admin-class-password" v-model="adminClassPassword" :type="showPassword ? 'text' : 'password'" minlength="10" maxlength="128" autocomplete="new-password"><label class="field-label password-label" for="admin-class-confirm">CONFIRM PASSWORD</label><input id="admin-class-confirm" v-model="adminConfirmPassword" :type="showPassword ? 'text' : 'password'" autocomplete="new-password"><div v-if="adminResetError" class="form-error" role="alert">{{ adminResetError }}</div><button class="primary-button modal-submit" type="submit" :disabled="busy"><Save :size="17" /> Reset password</button></form></div></div>
+    <div v-if="showAdminDelete" class="modal-backdrop" @mousedown.self="showAdminDelete = false"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="admin-delete-title"><button class="modal-close" aria-label="Close" @click="showAdminDelete = false"><X :size="20" /></button><span class="modal-icon danger-icon"><Trash2 :size="25" /></span><div class="section-kicker">PERMANENT ACTION</div><h2 id="admin-delete-title">Delete Class {{ adminTargetName }}?</h2><p>This removes the class and every weekly entry. It cannot be undone.</p><form @submit.prevent="deleteAdminClass"><label class="field-label" for="admin-delete-confirm">TYPE {{ adminTargetName }} TO CONFIRM</label><input id="admin-delete-confirm" v-model="adminDeleteConfirm" autocomplete="off" autocapitalize="characters"><div v-if="adminDeleteError" class="form-error" role="alert">{{ adminDeleteError }}</div><button class="danger-button modal-submit" type="submit" :disabled="busy"><Trash2 :size="17" /> Delete class permanently</button></form></div></div>
+    <div v-if="showAdminPassword" class="modal-backdrop" @mousedown.self="showAdminPassword = false"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="admin-password-title"><button class="modal-close" aria-label="Close" @click="showAdminPassword = false"><X :size="20" /></button><span class="modal-icon"><ShieldCheck :size="25" /></span><div class="section-kicker">SCHOOL ACCESS</div><h2 id="admin-password-title">Principal password</h2><p>Changing this password signs out other principal devices.</p><form @submit.prevent="changeAdminPassword"><label class="field-label" for="admin-current-password">CURRENT PASSWORD</label><input id="admin-current-password" v-model="currentAdminPassword" :type="showPassword ? 'text' : 'password'" autocomplete="current-password"><label class="field-label password-label" for="admin-updated-password">NEW PASSWORD</label><input id="admin-updated-password" v-model="updatedAdminPassword" :type="showPassword ? 'text' : 'password'" minlength="10" maxlength="128" autocomplete="new-password"><label class="field-label password-label" for="admin-confirm-password">CONFIRM NEW PASSWORD</label><input id="admin-confirm-password" v-model="confirmAdminPassword" :type="showPassword ? 'text' : 'password'" autocomplete="new-password"><div v-if="adminPasswordError" class="form-error" role="alert">{{ adminPasswordError }}</div><button class="primary-button modal-submit" type="submit" :disabled="busy"><Save :size="17" /> Update password</button></form></div></div>
     <div v-if="showManage && signedInName" class="modal-backdrop" @mousedown.self="showManage = false"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="manage-title"><button class="modal-close" aria-label="Close" @click="showManage = false"><X :size="20" /></button><span class="modal-icon"><KeyRound :size="25" /></span><div class="section-kicker">CLASS SETTINGS</div><h2 id="manage-title">Manage Class {{ signedInName }}</h2><p>Changing the password signs out other devices.</p><form @submit.prevent="changePassword"><label class="field-label" for="current-password">CURRENT PASSWORD</label><input id="current-password" v-model="currentPassword" :type="showPassword ? 'text' : 'password'" autocomplete="current-password"><label class="field-label password-label" for="updated-password">NEW PASSWORD</label><div class="password-field"><input id="updated-password" v-model="updatedPassword" :type="showPassword ? 'text' : 'password'" minlength="10" maxlength="128" autocomplete="new-password"><button type="button" :aria-label="showPassword ? 'Hide password' : 'Show password'" @click="showPassword = !showPassword"><EyeOff v-if="showPassword" :size="17" /><Eye v-else :size="17" /></button></div><label class="field-label password-label" for="confirm-updated-password">CONFIRM NEW PASSWORD</label><input id="confirm-updated-password" v-model="confirmUpdatedPassword" :type="showPassword ? 'text' : 'password'" autocomplete="new-password"><div v-if="manageError" class="form-error" role="alert">{{ manageError }}</div><button class="primary-button modal-submit" type="submit" :disabled="busy"><Save :size="17" /> Update password</button></form><button class="danger-link" type="button" @click="showManage = false; showDelete = true"><Trash2 :size="16" /> Delete this class</button></div></div>
     <div v-if="showDelete && selected" class="modal-backdrop" @mousedown.self="showDelete = false"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="delete-title"><button class="modal-close" aria-label="Close" @click="showDelete = false"><X :size="20" /></button><span class="modal-icon danger-icon"><Trash2 :size="25" /></span><div class="section-kicker">PERMANENT ACTION</div><h2 id="delete-title">Delete Class {{ selected.name }}?</h2><p>This removes the class, every weekly entry, and its place on the leaderboard. It cannot be undone.</p><form @submit.prevent="removeClass"><label class="field-label" for="delete-confirm-name">TYPE {{ selected.name }} TO CONFIRM</label><input id="delete-confirm-name" v-model="deleteConfirmName" autocomplete="off" autocapitalize="characters"><label class="field-label password-label" for="delete-password">CLASS PASSWORD</label><input id="delete-password" v-model="deletePassword" :type="showPassword ? 'text' : 'password'" autocomplete="current-password"><div v-if="deleteError" class="form-error" role="alert">{{ deleteError }}</div><button class="danger-button modal-submit" type="submit" :disabled="busy"><Trash2 :size="17" /> {{ busy ? 'Deleting...' : 'Delete class permanently' }}</button></form></div></div>
     <div v-if="celebration" class="modal-backdrop celebration-backdrop" @mousedown.self="celebration = null"><div class="modal celebration" role="dialog" aria-modal="true" aria-labelledby="celebration-title"><div class="confetti" aria-hidden="true"><i v-for="i in 20" :key="i" :style="{ '--i': i - 1 }" /></div><button class="modal-close" aria-label="Close" @click="celebration = null"><X :size="20" /></button><span class="celebration-icon"><Trophy :size="38" /></span><div class="section-kicker">WELL DONE!</div><h2 id="celebration-title">{{ celebration.title }}</h2><p>{{ celebration.detail }}</p><button class="primary-button modal-submit" @click="celebration = null; scrollTo('achievements')">See achievements <ArrowRight :size="17" /></button></div></div>

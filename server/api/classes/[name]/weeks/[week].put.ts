@@ -1,6 +1,6 @@
 import { CLASS_NAME_PATTERN, validCount, validWeek } from '../../../../utils/tracker'
 import { putWeek } from '../../../../utils/repository'
-import { requireClassSession } from '../../../../utils/session'
+import { requireWriteAccess } from '../../../../utils/admin-session'
 
 export default defineEventHandler(async event => {
   const name = (getRouterParam(event, 'name') || '').toUpperCase()
@@ -8,7 +8,7 @@ export default defineEventHandler(async event => {
   if (!CLASS_NAME_PATTERN.test(name) || !validWeek(week)) {
     throw createError({ statusCode: 400, message: 'Choose a valid class and a current or past school week.' })
   }
-  await requireClassSession(event, name)
+  await requireWriteAccess(event, name)
   const body = await readBody(event)
   if (!body || !validCount(body.lunches) || !validCount(body.items) ||
       (body.lunches === 0 && body.items === 0)) {

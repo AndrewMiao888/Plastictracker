@@ -13,7 +13,7 @@ export default defineEventHandler(async event => {
   const name = body.name.toUpperCase()
   const credentials = await getCredentials(name)
   if (!credentials) throw createError({ statusCode: 401, message: 'Class name or password is incorrect.' })
-  if (!credentials.hash) throw createError({ statusCode: 403, message: 'This class has not been given a password yet. Ask the school coordinator.' })
+  if (!credentials.hash) throw createError({ statusCode: 403, message: 'This class is unclaimed. Claim it to set a password.' })
   if (credentials.lockedUntil && new Date(credentials.lockedUntil).getTime() > Date.now()) {
     throw createError({ statusCode: 429, message: 'Too many attempts. Try again in 15 minutes.' })
   }

@@ -1,5 +1,5 @@
 export type WeekEntry = { lunches: number; items: number; updatedAt: string }
-export type ClassEntry = { name: string; sample: boolean; createdAt: string; weeks: Record<string, WeekEntry> }
+export type ClassEntry = { name: string; sample: boolean; claimable: boolean; createdAt: string; weeks: Record<string, WeekEntry> }
 export type Dashboard = { goal: number; classes: ClassEntry[] }
 
 export const CLASS_NAME_PATTERN = /^[0-9][a-zA-Z]{1,3}$/
@@ -36,7 +36,7 @@ function starterClass(name: string, weeklyCounts: [number, number][], currentWee
   weeklyCounts.forEach(([lunches, items], index) => {
     weeks[shiftWeek(currentWeek, -index)] = { lunches, items, updatedAt: new Date().toISOString() }
   })
-  return { name, sample: true, createdAt: new Date().toISOString(), weeks }
+  return { name, sample: true, claimable: true, createdAt: new Date().toISOString(), weeks }
 }
 
 export function starterData(currentWeek = weekStartFor()): Dashboard {
