@@ -19,7 +19,7 @@ The dashboard and all class progress remain public without sign-in. Password has
 
 ## Principal Access
 
-Set `ADMIN_BOOTSTRAP_PASSWORD` in the deployment environment before the first principal sign-in. The app stores a salted password hash in its dedicated tracker database on first sign-in; it never exposes the password through public APIs. The principal can edit any class's weekly entries, reset class passwords (revoking class sessions), delete classes, change the school goal, and change the principal password. Principal sessions use a separate HTTP-only cookie and expire after eight hours. Five incorrect sign-in attempts lock principal sign-in for 15 minutes. After changing the principal password, the database hash takes precedence over the bootstrap environment variable.
+Set `ADMIN_BOOTSTRAP_PASSWORD` in the deployment environment before the first principal sign-in. The app stores a salted password hash in its dedicated tracker database on first sign-in; it never exposes the password through public APIs. The principal can edit any class's weekly entries, reset class passwords (revoking class sessions), delete classes, change the school goal, weekly event name, page background, accent colour, font, and principal password. Appearance settings are public so every visitor sees the same school dashboard; only the principal can change them. Principal sessions use a separate HTTP-only cookie and expire after eight hours. Five incorrect sign-in attempts lock principal sign-in for 15 minutes. After changing the principal password, the database hash takes precedence over the bootstrap environment variable.
 
 ## Checks
 

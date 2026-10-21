@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { CLASS_NAME_PATTERN, starterData, validCount, validWeek } from './tracker.ts'
+import { CLASS_NAME_PATTERN, DEFAULT_SCHOOL_SETTINGS, starterData, validCount, validSchoolSettings, validWeek } from './tracker.ts'
 
 test('class names require exactly one digit followed by 1 to 3 letters', () => {
   for (const name of ['5B', '6AB', '4ABC', '0z']) assert.equal(CLASS_NAME_PATTERN.test(name), true, name)
@@ -22,4 +22,13 @@ test('sample data uses the chosen school week', () => {
   assert.equal(sample.classes.length, 5)
   assert.equal(sample.classes[0]?.weeks['2026-10-19']?.items, 54)
   assert.equal(sample.classes[0]?.weeks['2026-10-12']?.items, 48)
+})
+
+test('school appearance settings accept readable backgrounds and supported fonts', () => {
+  assert.equal(validSchoolSettings(DEFAULT_SCHOOL_SETTINGS), true)
+  assert.equal(validSchoolSettings({ ...DEFAULT_SCHOOL_SETTINGS, weekName: 'Waste-Free Wednesday', backgroundColor: '#e9f1f8', accentColor: '#f5ac71', fontFamily: 'Georgia' }), true)
+  assert.equal(validSchoolSettings({ ...DEFAULT_SCHOOL_SETTINGS, weekName: ' ' }), false)
+  assert.equal(validSchoolSettings({ ...DEFAULT_SCHOOL_SETTINGS, backgroundColor: '#14241f' }), false)
+  assert.equal(validSchoolSettings({ ...DEFAULT_SCHOOL_SETTINGS, accentColor: 'red' }), false)
+  assert.equal(validSchoolSettings({ ...DEFAULT_SCHOOL_SETTINGS, fontFamily: 'Comic Sans MS' }), false)
 })

@@ -2,10 +2,10 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { neon } from '@neondatabase/serverless'
 import { hashPassword } from './password'
-import { SCHOOL_GOAL, type ClassEntry, type Dashboard, type WeekEntry } from './tracker'
+import { DEFAULT_SCHOOL_SETTINGS, SCHOOL_GOAL, type ClassEntry, type Dashboard, type SchoolSettings, type WeekEntry } from './tracker'
 
 type StoredClass = Omit<ClassEntry, 'claimable'> & { passwordHash?: string | null; failedLogins?: number; lockedUntil?: string | null }
-type StoredDashboard = Omit<Dashboard, 'classes'> & { classes: StoredClass[]; admin?: { hash: string; failedLogins: number; lockedUntil: string | null } }
+type StoredDashboard = Omit<Dashboard, 'classes' | 'settings'> & { settings?: SchoolSettings; classes: StoredClass[]; admin?: { hash: string; failedLogins: number; lockedUntil: string | null } }
 type Credentials = { hash: string | null; failedLogins: number; lockedUntil: string | null }
 
 const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL
@@ -58,8 +58,16 @@ async function ensureSchema() {
     )`
     await sql`CREATE TABLE IF NOT EXISTS plastic_settings (
       id integer PRIMARY KEY CHECK (id = 1),
-      goal integer NOT NULL CHECK (goal BETWEEN 1 AND 1000000)
+      goal integer NOT NULL CHECK (goal BETWEEN 1 AND 1000000),
+      week_name varchar(40) NOT NULL DEFAULT 'Plastic-Free Day',
+      background_color char(7) NOT NULL DEFAULT '#f6f8f4',
+      accent_color char(7) NOT NULL DEFAULT '#286747',
+      font_family varchar(20) NOT NULL DEFAULT 'DM Sans'
     )`
+    await sql`ALTER TABLE plastic_settings ADD COLUMN IF NOT EXISTS week_name varchar(40) NOT NULL DEFAULT 'Plastic-Free Day'`
+    await sql`ALTER TABLE plastic_settings ADD COLUMN IF NOT EXISTS background_color char(7) NOT NULL DEFAULT '#f6f8f4'`
+    await sql`ALTER TABLE plastic_settings ADD COLUMN IF NOT EXISTS accent_color char(7) NOT NULL DEFAULT '#286747'`
+    await sql`ALTER TABLE plastic_settings ADD COLUMN IF NOT EXISTS font_family varchar(20) NOT NULL DEFAULT 'DM Sans'`
   })().catch(error => { schemaPromise = undefined; throw error })
   await schemaPromise
   return sql
@@ -99,12 +107,12 @@ function updateLocal<T>(change: (data: StoredDashboard) => T): Promise<T> {
 export async function getDashboard(): Promise<Dashboard> {
   if (!sql) {
     const data = await readLocal()
-    return { goal: data.goal, classes: data.classes.map(entry => ({
+    return { goal: data.goal, settings: data.settings || DEFAULT_SCHOOL_SETTINGS, classes: data.classes.map(entry => ({
       name: entry.name, sample: entry.sample, claimable: !entry.passwordHash, createdAt: entry.createdAt, weeks: entry.weeks,
     })) }
   }
   await ensureSchema()
-  const settingsRows = await sql`SELECT goal FROM plastic_settings WHERE id = 1`
+  const settingsRows = await sql`SELECT goal, week_name, background_color, accent_color, font_family FROM plastic_settings WHERE id = 1`
   const classRows = await sql`SELECT name, sample, password_hash IS NULL AS claimable, created_at::text AS created_at FROM plastic_classes ORDER BY name`
   const weekRows = await sql`SELECT class_name, week_start::text AS week_start, lunches, items, updated_at::text AS updated_at FROM plastic_weekly_entries`
   const classes = classRows.map(row => ({
@@ -117,7 +125,23 @@ export async function getDashboard(): Promise<Dashboard> {
       lunches: Number(row.lunches), items: Number(row.items), updatedAt: String(row.updated_at),
     }
   }
-  return { goal: settingsRows[0] ? Number(settingsRows[0].goal) : SCHOOL_GOAL, classes }
+  const storedSettings = settingsRows[0]
+  return { goal: storedSettings ? Number(storedSettings.goal) : SCHOOL_GOAL,
+    settings: storedSettings ? {
+      weekName: String(storedSettings.week_name), backgroundColor: String(storedSettings.background_color),
+      accentColor: String(storedSettings.accent_color), fontFamily: String(storedSettings.font_family),
+    } : DEFAULT_SCHOOL_SETTINGS, classes }
+}
+
+export async function setSchoolSettings(goal: number, settings: SchoolSettings) {
+  if (!sql) return updateLocal(data => { data.goal = goal; data.settings = settings; return true })
+  await ensureSchema()
+  await sql`INSERT INTO plastic_settings (id, goal, week_name, background_color, accent_color, font_family)
+    VALUES (1, ${goal}, ${settings.weekName}, ${settings.backgroundColor}, ${settings.accentColor}, ${settings.fontFamily})
+    ON CONFLICT (id) DO UPDATE SET goal = EXCLUDED.goal, week_name = EXCLUDED.week_name,
+      background_color = EXCLUDED.background_color, accent_color = EXCLUDED.accent_color,
+      font_family = EXCLUDED.font_family`
+  return true
 }
 
 export async function setSchoolGoal(goal: number) {

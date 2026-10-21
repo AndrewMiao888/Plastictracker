@@ -10,10 +10,19 @@ import {
 
 type WeekEntry = { lunches: number; items: number; updatedAt: string }
 type ClassEntry = { name: string; sample: boolean; claimable: boolean; createdAt: string; weeks: Record<string, WeekEntry> }
-type Dashboard = { goal: number; classes: ClassEntry[] }
+type SchoolSettings = { weekName: string; backgroundColor: string; accentColor: string; fontFamily: string }
+type Dashboard = { goal: number; settings: SchoolSettings; classes: ClassEntry[] }
 type Celebration = { title: string; detail: string }
 
 const classPattern = /^[0-9][a-zA-Z]{1,3}$/
+const defaultSchoolSettings: SchoolSettings = { weekName: 'Plastic-Free Day', backgroundColor: '#f6f8f4', accentColor: '#286747', fontFamily: 'DM Sans' }
+const fontOptions = ['DM Sans', 'Outfit', 'Arial', 'Georgia']
+const fontStacks: Record<string, string> = {
+  'DM Sans': "'DM Sans', Arial, sans-serif", Outfit: "Outfit, 'DM Sans', sans-serif",
+  Arial: 'Arial, sans-serif', Georgia: 'Georgia, serif',
+}
+const backgroundPresets = ['#f6f8f4', '#eaf3f6', '#f9eff2', '#f3f3eb']
+const accentPresets = ['#286747', '#1f6d85', '#a33d62', '#ba633d']
 const levels = [
   { name: 'Eco Rookie', threshold: 0 },
   { name: 'Green Scout', threshold: 120 },
@@ -102,7 +111,11 @@ const showAdminLogin = ref(false)
 const adminPassword = ref('')
 const adminLoginError = ref('')
 const adminGoal = ref(String(dashboard.value?.goal || 1000))
-const adminGoalError = ref('')
+const adminWeekName = ref(dashboard.value?.settings.weekName || defaultSchoolSettings.weekName)
+const adminBackground = ref(dashboard.value?.settings.backgroundColor || defaultSchoolSettings.backgroundColor)
+const adminAccent = ref(dashboard.value?.settings.accentColor || defaultSchoolSettings.accentColor)
+const adminFont = ref(dashboard.value?.settings.fontFamily || defaultSchoolSettings.fontFamily)
+const adminSettingsError = ref('')
 const showAdminReset = ref(false)
 const adminTargetName = ref('')
 const adminClassPassword = ref('')
@@ -123,6 +136,21 @@ const selected = computed(() => dashboard.value?.classes.find(entry => entry.nam
 const signedInName = computed(() => authSession.value?.className || null)
 const isAdmin = computed(() => !!adminSession.value?.admin)
 const canEdit = computed(() => !!selected.value && (isAdmin.value || signedInName.value === selected.value.name))
+const schoolSettings = computed(() => dashboard.value?.settings || defaultSchoolSettings)
+const themeStyle = computed(() => {
+  const accent = schoolSettings.value.accentColor
+  const channels = [1, 3, 5].map(index => parseInt(accent.slice(index, index + 2), 16) / 255)
+  const linear = channels.map(channel => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
+  const luminance = 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!
+  return {
+    '--page-bg': schoolSettings.value.backgroundColor,
+    '--accent-color': accent,
+    '--accent-ink': luminance > 0.18 ? '#173d38' : '#ffffff',
+    '--app-font': fontStacks[schoolSettings.value.fontFamily] || fontStacks['DM Sans'],
+    '--display-font': fontStacks[schoolSettings.value.fontFamily] || fontStacks['DM Sans'],
+  }
+})
+useHead(() => ({ title: `St Andrew's ${schoolSettings.value.weekName}` }))
 const existing = computed(() => selected.value?.weeks[week.value])
 watch([selected, week], () => {
   lunches.value = String(existing.value?.lunches ?? 0)
@@ -322,19 +350,27 @@ async function logoutAdmin() {
   finally { busy.value = false }
 }
 
-async function saveAdminGoal() {
+async function saveAdminSettings() {
   const goalValue = Number(adminGoal.value)
   if (!Number.isInteger(goalValue) || goalValue < 1 || goalValue > 1_000_000) {
-    adminGoalError.value = 'Choose a whole number from 1 to 1,000,000.'
+    adminSettingsError.value = 'Choose a whole-number goal from 1 to 1,000,000.'
+    return
+  }
+  const settings = {
+    weekName: adminWeekName.value.trim(), backgroundColor: adminBackground.value,
+    accentColor: adminAccent.value, fontFamily: adminFont.value,
+  }
+  if (settings.weekName.length < 2 || settings.weekName.length > 40) {
+    adminSettingsError.value = 'The week name must be 2 to 40 characters.'
     return
   }
   busy.value = true
-  adminGoalError.value = ''
+  adminSettingsError.value = ''
   try {
-    await request('/api/admin/goal', { method: 'PUT', body: { goal: goalValue } })
+    await request('/api/admin/settings', { method: 'PUT', body: { goal: goalValue, settings } })
     await reload()
-    toast.value = 'School goal updated.'
-  } catch (error) { adminGoalError.value = (error as Error).message }
+    toast.value = 'School settings updated.'
+  } catch (error) { adminSettingsError.value = (error as Error).message }
   finally { busy.value = false }
 }
 
@@ -460,7 +496,7 @@ function changeCount(current: string, amount: number) {
 <template>
   <div v-if="loadError" class="load-screen"><Leaf :size="34" /><h1>We couldn't load the school tracker.</h1><p>{{ loadError.message }}</p><button @click="reload">Try again</button></div>
   <div v-else-if="!dashboard" class="load-screen"><span class="loading-leaf"><Leaf :size="40" /></span><p>Loading your school...</p></div>
-  <div v-else class="app-shell">
+  <div v-else class="app-shell" :style="themeStyle">
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark"><Leaf :size="25" :stroke-width="2.6" /></span><span>plastic<span class="brand-accent">free.</span><small>SCHOOL TRACKER</small></span></div>
       <button v-if="isAdmin" class="mobile-sample-button" @click="scrollTo('admin')"><ShieldCheck :size="15" /> Principal</button><button v-else-if="signedInName" class="mobile-sample-button" @click="selectedName = signedInName; scrollTo('check-in')"><ShieldCheck :size="15" /> Class {{ signedInName }}</button><button v-else class="mobile-sample-button" @click="showAdminLogin = true"><KeyRound :size="15" /> Principal</button>
@@ -481,7 +517,7 @@ function changeCount(current: string, amount: number) {
     <main id="overview" class="main">
       <div class="topbar"><div class="breadcrumb">School dashboard <ChevronRight :size="14" /> <strong>Overview</strong></div><div class="top-actions"><span v-if="isAdmin" class="session-label"><ShieldCheck :size="15" /> Principal access</span><span v-else-if="signedInName" class="session-label"><ShieldCheck :size="15" /> Editing Class {{ signedInName }}</span><span class="date-pill"><CalendarDays :size="15" /> Week of {{ weekLabel(currentWeek()) }}</span><span class="top-avatar"><Leaf :size="17" /></span></div></div>
       <div class="content">
-        <header class="page-heading"><div><div class="eyebrow"><span class="eyebrow-dot" /> ST ANDREW'S PLASTIC-FREE DAY <span v-if="hasSamples" class="sample-badge">SAMPLE DATA</span></div><h1>Small swaps. Big impact.</h1><p>Every lunch counts. See how we're doing together.</p></div><button class="primary-button heading-button" @click="showCreate = true"><Plus :size="18" /> Create class</button></header>
+        <header class="page-heading"><div><div class="eyebrow"><span class="eyebrow-dot" /> ST ANDREW'S {{ schoolSettings.weekName.toUpperCase() }} <span v-if="hasSamples" class="sample-badge">SAMPLE DATA</span></div><h1>Small swaps. Big impact.</h1><p>Every lunch counts. See how we're doing together.</p></div><button class="primary-button heading-button" @click="showCreate = true"><Plus :size="18" /> Create class</button></header>
 
         <section class="hero-panel" aria-label="School goal progress">
           <div class="hero-copy">
@@ -499,7 +535,7 @@ function changeCount(current: string, amount: number) {
         <section class="stats-grid" aria-label="School statistics"><div v-for="metric in metricRows" :key="metric.label" class="metric surface"><span class="metric-icon" :class="metric.tone"><component :is="metric.icon" :size="23" /></span><div><span class="metric-label">{{ metric.label }}</span><strong>{{ metric.value }}</strong><span class="metric-detail"><ArrowUpRight :size="14" /> {{ metric.detail }}</span></div></div></section>
 
         <div class="main-grid">
-          <section id="check-in" class="surface checkin"><div class="section-heading"><div><div class="section-kicker">MAKE IT COUNT</div><h2>Weekly check-in</h2><p>Record your class's progress for the week.</p></div><span class="heading-icon green"><CalendarDays :size="21" /></span></div>
+          <section id="check-in" class="surface checkin"><div class="section-heading"><div><div class="section-kicker">{{ schoolSettings.weekName.toUpperCase() }}</div><h2>Weekly check-in</h2><p>Record your class's progress for the week.</p></div><span class="heading-icon green"><CalendarDays :size="21" /></span></div>
             <div v-if="selected">
               <div class="form-top"><label class="field-label" for="class-select">VIEW CLASS</label><div class="select-wrap"><select id="class-select" v-model="selectedName"><option v-for="entry in dashboard.classes" :key="entry.name" :value="entry.name">Class {{ entry.name }}</option></select><ChevronDown :size="18" /></div><div class="week-picker"><span>Week of <strong>{{ weekLabel(week) }}</strong></span><div><button type="button" title="Previous week" aria-label="Previous week" @click="week = shiftWeek(week, -1)"><ChevronLeft :size="18" /></button><button type="button" title="Next week" aria-label="Next week" :disabled="week >= currentWeek()" @click="week = shiftWeek(week, 1)"><ChevronRight :size="18" /></button></div></div></div>
               <div class="class-session-bar"><span v-if="canEdit" class="class-session-state editing"><ShieldCheck :size="15" /> {{ isAdmin ? 'Principal editing' : 'Editing' }} Class {{ selected.name }}</span><span v-else class="class-session-state"><LockKeyhole :size="15" /> Public view</span><div v-if="signedInName === selected.name" class="class-session-actions"><button type="button" title="Manage class and password" @click="showManage = true"><Settings2 :size="15" /> Manage</button><button type="button" title="Sign out of class" :disabled="busy" @click="logoutClass"><LogOut :size="15" /> Sign out</button></div><div v-else-if="isAdmin" class="class-session-actions"><button type="button" @click="scrollTo('admin')"><Settings2 :size="15" /> Principal panel</button></div></div>
@@ -522,8 +558,30 @@ function changeCount(current: string, amount: number) {
         </section>
 
         <section class="activity-section"><div class="section-title-row"><div><div class="section-kicker">LATEST UPDATES</div><h2>Recent activity</h2></div><span class="activity-count">{{ activities.length }} recent entries</span></div><div class="surface activity-table"><div class="table-head"><span>CLASS</span><span>WEEK</span><span>LUNCHES</span><span>ITEMS SAVED</span></div><template v-if="activities.length"><div v-for="activity in activities" :key="`${activity.name}-${activity.date}`" class="table-row"><span class="table-class"><span class="table-avatar">{{ activity.name[0] }}</span>Class {{ activity.name }}</span><span>Week of {{ weekLabel(activity.date) }}</span><span>{{ activity.lunches }}</span><span class="table-items">+{{ activity.items }} <ArrowUpRight :size="15" /></span></div></template><div v-else class="table-empty">No weeks logged yet. Your first entry will appear here.</div></div></section>
-        <section v-if="isAdmin" id="admin" class="admin-section"><div class="section-title-row"><div><div class="section-kicker">SCHOOL CONTROL</div><h2>Principal panel</h2></div><button class="admin-text-button" :disabled="busy" @click="logoutAdmin"><LogOut :size="16" /> Sign out</button></div><div class="admin-grid"><div class="surface admin-settings"><h3>School settings</h3><form @submit.prevent="saveAdminGoal"><label class="field-label" for="school-goal">PLASTIC ITEMS GOAL</label><div class="admin-goal-row"><input id="school-goal" v-model="adminGoal" type="number" min="1" max="1000000" step="1"><button class="primary-button" type="submit" :disabled="busy"><Save :size="16" /> Save goal</button></div><div v-if="adminGoalError" class="form-error" role="alert">{{ adminGoalError }}</div></form><button class="admin-text-button admin-password-action" @click="showAdminPassword = true"><KeyRound :size="16" /> Change principal password</button></div><div class="surface admin-classes"><div class="admin-classes-head"><h3>Classes <span>{{ dashboard.classes.length }}</span></h3><button class="admin-text-button" @click="showCreate = true"><Plus :size="16" /> Add class</button></div><div v-if="dashboard.classes.length" class="admin-class-list"><div v-for="entry in dashboard.classes" :key="entry.name" class="admin-class-row"><span class="admin-class-name"><span class="table-avatar">{{ entry.name[0] }}</span><strong>{{ entry.name }}</strong><small>{{ entry.claimable ? 'Unclaimed' : `${totals(entry).items} items saved` }}</small></span><div class="admin-row-actions"><button title="Edit weekly entries" :aria-label="`Edit Class ${entry.name}`" @click="selectedName = entry.name; scrollTo('check-in')"><CalendarDays :size="16" /></button><button title="Reset class password" :aria-label="`Reset Class ${entry.name} password`" @click="openAdminReset(entry.name)"><KeyRound :size="16" /></button><button class="danger" title="Delete class" :aria-label="`Delete Class ${entry.name}`" @click="adminTargetName = entry.name; adminDeleteConfirm = ''; adminDeleteError = ''; showAdminDelete = true"><Trash2 :size="16" /></button></div></div></div><p v-else class="admin-empty">No classes yet.</p></div></div></section>
-        <footer class="footer"><span><Leaf :size="15" /> Plastic-Free Day</span><button v-if="!isAdmin" class="footer-admin-link" @click="showAdminLogin = true">Principal sign in</button><span v-else>Small choices add up.</span></footer>
+        <section v-if="isAdmin" id="admin" class="admin-section">
+          <div class="section-title-row"><div><div class="section-kicker">SCHOOL CONTROL</div><h2>Principal panel</h2></div><button class="admin-text-button" :disabled="busy" @click="logoutAdmin"><LogOut :size="16" /> Sign out</button></div>
+          <div class="admin-grid">
+            <div class="surface admin-settings"><h3>School settings</h3>
+              <form class="school-settings-form" @submit.prevent="saveAdminSettings">
+                <label class="field-label" for="school-goal">PLASTIC ITEMS GOAL</label>
+                <input id="school-goal" v-model="adminGoal" type="number" min="1" max="1000000" step="1">
+                <label class="field-label" for="school-week-name">WEEK NAME</label>
+                <input id="school-week-name" v-model="adminWeekName" type="text" minlength="2" maxlength="40">
+                <span class="field-label">BACKGROUND COLOUR</span>
+                <div class="setting-colors"><button v-for="color in backgroundPresets" :key="color" type="button" class="color-swatch" :class="{ chosen: adminBackground.toLowerCase() === color }" :style="{ backgroundColor: color }" :aria-label="`Background ${color}`" :aria-pressed="adminBackground.toLowerCase() === color" @click="adminBackground = color" /><label class="custom-color" title="Custom background colour"><input v-model="adminBackground" type="color" aria-label="Custom background colour"><span>Custom</span></label><code>{{ adminBackground }}</code></div>
+                <span class="field-label">ACCENT COLOUR</span>
+                <div class="setting-colors"><button v-for="color in accentPresets" :key="color" type="button" class="color-swatch" :class="{ chosen: adminAccent.toLowerCase() === color }" :style="{ backgroundColor: color }" :aria-label="`Accent ${color}`" :aria-pressed="adminAccent.toLowerCase() === color" @click="adminAccent = color" /><label class="custom-color" title="Custom accent colour"><input v-model="adminAccent" type="color" aria-label="Custom accent colour"><span>Custom</span></label><code>{{ adminAccent }}</code></div>
+                <label class="field-label" for="school-font">FONT</label>
+                <select id="school-font" v-model="adminFont"><option v-for="font in fontOptions" :key="font" :value="font">{{ font }}</option></select>
+                <div v-if="adminSettingsError" class="form-error" role="alert">{{ adminSettingsError }}</div>
+                <button class="primary-button admin-save-settings" type="submit" :disabled="busy"><Save :size="16" /> {{ busy ? 'Saving...' : 'Save settings' }}</button>
+              </form>
+              <button class="admin-text-button admin-password-action" @click="showAdminPassword = true"><KeyRound :size="16" /> Change principal password</button>
+            </div>
+            <div class="surface admin-classes"><div class="admin-classes-head"><h3>Classes <span>{{ dashboard.classes.length }}</span></h3><button class="admin-text-button" @click="showCreate = true"><Plus :size="16" /> Add class</button></div><div v-if="dashboard.classes.length" class="admin-class-list"><div v-for="entry in dashboard.classes" :key="entry.name" class="admin-class-row"><span class="admin-class-name"><span class="table-avatar">{{ entry.name[0] }}</span><strong>{{ entry.name }}</strong><small>{{ entry.claimable ? 'Unclaimed' : `${totals(entry).items} items saved` }}</small></span><div class="admin-row-actions"><button title="Edit weekly entries" :aria-label="`Edit Class ${entry.name}`" @click="selectedName = entry.name; scrollTo('check-in')"><CalendarDays :size="16" /></button><button title="Reset class password" :aria-label="`Reset Class ${entry.name} password`" @click="openAdminReset(entry.name)"><KeyRound :size="16" /></button><button class="danger" title="Delete class" :aria-label="`Delete Class ${entry.name}`" @click="adminTargetName = entry.name; adminDeleteConfirm = ''; adminDeleteError = ''; showAdminDelete = true"><Trash2 :size="16" /></button></div></div></div><p v-else class="admin-empty">No classes yet.</p></div>
+          </div>
+        </section>
+        <footer class="footer"><span><Leaf :size="15" /> {{ schoolSettings.weekName }}</span><button v-if="!isAdmin" class="footer-admin-link" @click="showAdminLogin = true">Principal sign in</button><span v-else>Small choices add up.</span></footer>
       </div>
     </main>
 
