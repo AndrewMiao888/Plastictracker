@@ -130,3 +130,29 @@
 .admin-save-settings{width:100%;margin-top:20px}
 .admin-password-action{margin-top:17px}
 @media(max-width:480px){.setting-colors{gap:5px}.color-swatch{width:27px;height:27px}.custom-color span{font-size:9px}.setting-colors code{font-size:9px}}
+
+/* Principal calendar and achievements */
+.admin-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:17px;margin-top:17px;align-items:start}
+.admin-tool{padding:22px 24px;min-width:0}
+.admin-badges{grid-column:1/-1}
+.admin-tool-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:32px;margin-bottom:18px;color:#6e9476}
+.admin-tool-heading h3{font-size:16px;color:#294737;margin:0}.admin-tool-heading h3 span{color:#8b9e90;font-size:11px;margin-left:4px}
+.admin-tool input,.admin-tool select{min-width:0;width:100%;height:40px;border:1px solid #dfe8dd;border-radius:5px;background:#f8faf7;padding:0 11px;color:#2d4e38;font-size:12px;font-weight:700}
+.admin-tool .field-label:not(:first-child){margin-top:15px}
+.admin-tool-save{margin-top:18px;width:100%}
+.admin-named-weeks{margin-top:18px;border-top:1px solid #edf1eb}
+.admin-named-week{display:flex;align-items:center;gap:8px;border-bottom:1px solid #edf1eb;min-height:42px}
+.admin-named-week>button:first-child{flex:1;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:8px;text-align:left;border:0;background:transparent;padding:7px 0;color:#365743}
+.admin-named-week strong{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.admin-named-week small{font-size:10px;color:#92a395;white-space:nowrap}
+.admin-icon-button{width:30px;height:30px;flex:none;display:grid;place-items:center;border:0;border-radius:5px;background:transparent;color:#6e9476}
+.admin-icon-button:hover{background:#eaf3e8}.admin-icon-button.danger{color:#b87970}.admin-icon-button.danger:hover{background:#fff0ec}
+.admin-level-head,.admin-level-row{display:grid;grid-template-columns:24px minmax(0,1fr) 110px 30px;gap:7px;align-items:center}
+.admin-level-head{color:#94a496;font-size:9px;font-weight:800;letter-spacing:1px;margin-bottom:6px}.admin-level-head span:first-child{grid-column:2}.admin-level-row{margin-bottom:8px}
+.admin-level-row input{height:35px}.admin-level-row input[readonly]{background:#f0f4ee;color:#8a9d8e}.admin-level-index{font-size:11px;font-weight:800;color:#6b9873;text-align:center}.admin-level-spacer{width:30px}
+.admin-badge-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 24px}.admin-badge-row{display:flex;align-items:center;gap:10px;min-width:0;min-height:57px;border-top:1px solid #edf1eb}
+.admin-badge-icon{width:34px;height:34px;flex:none;display:grid;place-items:center;border-radius:50%;background:#e7f4e0;color:var(--accent-color)}
+.admin-badge-info{display:flex;flex-direction:column;min-width:0;flex:1}.admin-badge-info strong{font-size:11px;color:#365743;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.admin-badge-info small{font-size:10px;color:#91a295;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:15px}.badge-form-grid select{width:100%;height:40px;border:1px solid #dfe8dd;border-radius:5px;background:#f8faf7;padding:0 8px;color:#2d4e38;font-size:12px;font-weight:700}.badge-form-grid .field-label{margin:0 0 7px}
+.xp-level-up{margin:12px auto 0;width:100%;justify-content:center}.activity-week{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.week-picker>span{min-width:0;overflow:hidden;text-overflow:ellipsis}.date-pill{min-width:0;max-width:240px}.date-pill span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:850px){.admin-tools{grid-template-columns:1fr}.admin-badges{grid-column:auto}}
+@media(max-width:480px){.admin-tool{padding:18px 15px}.admin-level-head,.admin-level-row{grid-template-columns:18px minmax(0,1fr) 92px 28px;gap:4px}.admin-level-row input{padding:0 6px;font-size:11px}.admin-badge-list{grid-template-columns:1fr}.badge-form-grid{grid-template-columns:1fr}}

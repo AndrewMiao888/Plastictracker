@@ -2,10 +2,13 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { neon } from '@neondatabase/serverless'
 import { hashPassword } from './password'
-import { DEFAULT_SCHOOL_SETTINGS, SCHOOL_GOAL, type ClassEntry, type Dashboard, type SchoolSettings, type WeekEntry } from './tracker'
+import { DEFAULT_BADGES, DEFAULT_LEVELS, DEFAULT_SCHOOL_SETTINGS, SCHOOL_GOAL,
+  validBadgeDefinitions, validLevelDefinitions, type BadgeDefinition, type ClassEntry,
+  type Dashboard, type LevelDefinition, type SchoolSettings, type WeekEntry } from './tracker'
 
 type StoredClass = Omit<ClassEntry, 'claimable'> & { passwordHash?: string | null; failedLogins?: number; lockedUntil?: string | null }
-type StoredDashboard = Omit<Dashboard, 'classes' | 'settings'> & { settings?: SchoolSettings; classes: StoredClass[]; admin?: { hash: string; failedLogins: number; lockedUntil: string | null } }
+type StoredDashboard = Pick<Dashboard, 'goal'> & { settings?: SchoolSettings; levels?: LevelDefinition[]; badges?: BadgeDefinition[];
+  weekLabels?: Record<string, string>; classes: StoredClass[]; admin?: { hash: string; failedLogins: number; lockedUntil: string | null } }
 type Credentials = { hash: string | null; failedLogins: number; lockedUntil: string | null }
 
 const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL
@@ -25,11 +28,13 @@ async function ensureSchema() {
       created_at timestamptz NOT NULL DEFAULT now(),
       password_hash text,
       failed_logins integer NOT NULL DEFAULT 0,
-      locked_until timestamptz
+      locked_until timestamptz,
+      bonus_xp integer NOT NULL DEFAULT 0 CHECK (bonus_xp BETWEEN 0 AND 1000000)
     )`
     await sql`ALTER TABLE plastic_classes ADD COLUMN IF NOT EXISTS password_hash text`
     await sql`ALTER TABLE plastic_classes ADD COLUMN IF NOT EXISTS failed_logins integer NOT NULL DEFAULT 0`
     await sql`ALTER TABLE plastic_classes ADD COLUMN IF NOT EXISTS locked_until timestamptz`
+    await sql`ALTER TABLE plastic_classes ADD COLUMN IF NOT EXISTS bonus_xp integer NOT NULL DEFAULT 0`
     await sql`CREATE TABLE IF NOT EXISTS plastic_weekly_entries (
       class_name varchar(4) NOT NULL REFERENCES plastic_classes(name) ON DELETE CASCADE,
       week_start date NOT NULL,
@@ -62,12 +67,20 @@ async function ensureSchema() {
       week_name varchar(40) NOT NULL DEFAULT 'Plastic-Free Day',
       background_color char(7) NOT NULL DEFAULT '#f6f8f4',
       accent_color char(7) NOT NULL DEFAULT '#286747',
-      font_family varchar(20) NOT NULL DEFAULT 'DM Sans'
+      font_family varchar(20) NOT NULL DEFAULT 'DM Sans',
+      levels jsonb,
+      badges jsonb
     )`
     await sql`ALTER TABLE plastic_settings ADD COLUMN IF NOT EXISTS week_name varchar(40) NOT NULL DEFAULT 'Plastic-Free Day'`
     await sql`ALTER TABLE plastic_settings ADD COLUMN IF NOT EXISTS background_color char(7) NOT NULL DEFAULT '#f6f8f4'`
     await sql`ALTER TABLE plastic_settings ADD COLUMN IF NOT EXISTS accent_color char(7) NOT NULL DEFAULT '#286747'`
     await sql`ALTER TABLE plastic_settings ADD COLUMN IF NOT EXISTS font_family varchar(20) NOT NULL DEFAULT 'DM Sans'`
+    await sql`ALTER TABLE plastic_settings ADD COLUMN IF NOT EXISTS levels jsonb`
+    await sql`ALTER TABLE plastic_settings ADD COLUMN IF NOT EXISTS badges jsonb`
+    await sql`CREATE TABLE IF NOT EXISTS plastic_week_labels (
+      week_start date PRIMARY KEY,
+      label varchar(40) NOT NULL
+    )`
   })().catch(error => { schemaPromise = undefined; throw error })
   await schemaPromise
   return sql
@@ -107,16 +120,22 @@ function updateLocal<T>(change: (data: StoredDashboard) => T): Promise<T> {
 export async function getDashboard(): Promise<Dashboard> {
   if (!sql) {
     const data = await readLocal()
-    return { goal: data.goal, settings: data.settings || DEFAULT_SCHOOL_SETTINGS, classes: data.classes.map(entry => ({
-      name: entry.name, sample: entry.sample, claimable: !entry.passwordHash, createdAt: entry.createdAt, weeks: entry.weeks,
+    return { goal: data.goal, settings: data.settings || DEFAULT_SCHOOL_SETTINGS,
+      levels: validLevelDefinitions(data.levels) ? data.levels : DEFAULT_LEVELS,
+      badges: validBadgeDefinitions(data.badges) ? data.badges : DEFAULT_BADGES,
+      weekLabels: data.weekLabels || {}, classes: data.classes.map(entry => ({
+      name: entry.name, sample: entry.sample, claimable: !entry.passwordHash, bonusXp: entry.bonusXp || 0,
+      createdAt: entry.createdAt, weeks: entry.weeks,
     })) }
   }
   await ensureSchema()
-  const settingsRows = await sql`SELECT goal, week_name, background_color, accent_color, font_family FROM plastic_settings WHERE id = 1`
-  const classRows = await sql`SELECT name, sample, password_hash IS NULL AS claimable, created_at::text AS created_at FROM plastic_classes ORDER BY name`
+  const settingsRows = await sql`SELECT goal, week_name, background_color, accent_color, font_family, levels, badges FROM plastic_settings WHERE id = 1`
+  const classRows = await sql`SELECT name, sample, password_hash IS NULL AS claimable, bonus_xp, created_at::text AS created_at FROM plastic_classes ORDER BY name`
   const weekRows = await sql`SELECT class_name, week_start::text AS week_start, lunches, items, updated_at::text AS updated_at FROM plastic_weekly_entries`
+  const weekLabelRows = await sql`SELECT week_start::text AS week_start, label FROM plastic_week_labels`
   const classes = classRows.map(row => ({
-    name: String(row.name), sample: Boolean(row.sample), claimable: Boolean(row.claimable), createdAt: String(row.created_at), weeks: {} as Record<string, WeekEntry>,
+    name: String(row.name), sample: Boolean(row.sample), claimable: Boolean(row.claimable), bonusXp: Number(row.bonus_xp),
+    createdAt: String(row.created_at), weeks: {} as Record<string, WeekEntry>,
   }))
   const byName = new Map(classes.map(entry => [entry.name, entry]))
   for (const row of weekRows) {
@@ -126,11 +145,66 @@ export async function getDashboard(): Promise<Dashboard> {
     }
   }
   const storedSettings = settingsRows[0]
+  const storedLevels = typeof storedSettings?.levels === 'string' ? JSON.parse(storedSettings.levels) : storedSettings?.levels
+  const storedBadges = typeof storedSettings?.badges === 'string' ? JSON.parse(storedSettings.badges) : storedSettings?.badges
   return { goal: storedSettings ? Number(storedSettings.goal) : SCHOOL_GOAL,
     settings: storedSettings ? {
       weekName: String(storedSettings.week_name), backgroundColor: String(storedSettings.background_color),
       accentColor: String(storedSettings.accent_color), fontFamily: String(storedSettings.font_family),
-    } : DEFAULT_SCHOOL_SETTINGS, classes }
+    } : DEFAULT_SCHOOL_SETTINGS,
+    levels: validLevelDefinitions(storedLevels) ? storedLevels : DEFAULT_LEVELS,
+    badges: validBadgeDefinitions(storedBadges) ? storedBadges : DEFAULT_BADGES,
+    weekLabels: Object.fromEntries(weekLabelRows.map(row => [String(row.week_start), String(row.label)])), classes }
+}
+
+export async function setLevels(levels: LevelDefinition[]) {
+  if (!sql) return updateLocal(data => { data.levels = levels; return true })
+  await ensureSchema()
+  const encoded = JSON.stringify(levels)
+  await sql`INSERT INTO plastic_settings (id, goal, levels) VALUES (1, ${SCHOOL_GOAL}, ${encoded}::jsonb)
+    ON CONFLICT (id) DO UPDATE SET levels = EXCLUDED.levels`
+  return true
+}
+
+export async function setBadges(badges: BadgeDefinition[]) {
+  if (!sql) return updateLocal(data => { data.badges = badges; return true })
+  await ensureSchema()
+  const encoded = JSON.stringify(badges)
+  await sql`INSERT INTO plastic_settings (id, goal, badges) VALUES (1, ${SCHOOL_GOAL}, ${encoded}::jsonb)
+    ON CONFLICT (id) DO UPDATE SET badges = EXCLUDED.badges`
+  return true
+}
+
+export async function putWeekLabel(week: string, label: string) {
+  if (!sql) return updateLocal(data => { (data.weekLabels ||= {})[week] = label; return true })
+  await ensureSchema()
+  await sql`INSERT INTO plastic_week_labels (week_start, label) VALUES (${week}::date, ${label})
+    ON CONFLICT (week_start) DO UPDATE SET label = EXCLUDED.label`
+  return true
+}
+
+export async function deleteWeekLabel(week: string) {
+  if (!sql) return updateLocal(data => {
+    if (!data.weekLabels?.[week]) return false
+    delete data.weekLabels[week]
+    return true
+  })
+  await ensureSchema()
+  const rows = await sql`DELETE FROM plastic_week_labels WHERE week_start = ${week}::date RETURNING week_start`
+  return rows.length > 0
+}
+
+export async function awardBonusXp(name: string, amount: number) {
+  if (!sql) return updateLocal(data => {
+    const entry = data.classes.find(item => item.name === name)
+    if (!entry || (entry.bonusXp || 0) + amount > 1_000_000) return false
+    entry.bonusXp = (entry.bonusXp || 0) + amount
+    return true
+  })
+  await ensureSchema()
+  const rows = await sql`UPDATE plastic_classes SET bonus_xp = bonus_xp + ${amount}
+    WHERE name = ${name} AND bonus_xp + ${amount} <= 1000000 RETURNING name`
+  return rows.length > 0
 }
 
 export async function setSchoolSettings(goal: number, settings: SchoolSettings) {
@@ -252,7 +326,7 @@ export async function removeAllAdminSessions() {
 export async function createClass(name: string, passwordHash: string): Promise<boolean> {
   if (!sql) return updateLocal(data => {
     if (data.classes.some(entry => entry.name === name)) return false
-    data.classes.push({ name, sample: false, createdAt: new Date().toISOString(), weeks: {}, passwordHash, failedLogins: 0, lockedUntil: null })
+    data.classes.push({ name, sample: false, bonusXp: 0, createdAt: new Date().toISOString(), weeks: {}, passwordHash, failedLogins: 0, lockedUntil: null })
     return true
   })
   await ensureSchema()

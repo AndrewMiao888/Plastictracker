@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { CLASS_NAME_PATTERN, DEFAULT_SCHOOL_SETTINGS, starterData, validCount, validSchoolSettings, validWeek } from './tracker.ts'
+import { CLASS_NAME_PATTERN, DEFAULT_BADGES, DEFAULT_LEVELS, DEFAULT_SCHOOL_SETTINGS, starterData, validBadgeDefinitions,
+  validCount, validLevelDefinitions, validSchoolSettings, validSchoolWeekDate, validWeek, validWeekLabel } from './tracker.ts'
 
 test('class names require exactly one digit followed by 1 to 3 letters', () => {
   for (const name of ['5B', '6AB', '4ABC', '0z']) assert.equal(CLASS_NAME_PATTERN.test(name), true, name)
@@ -31,4 +32,26 @@ test('school appearance settings accept readable backgrounds and supported fonts
   assert.equal(validSchoolSettings({ ...DEFAULT_SCHOOL_SETTINGS, backgroundColor: '#14241f' }), false)
   assert.equal(validSchoolSettings({ ...DEFAULT_SCHOOL_SETTINGS, accentColor: 'red' }), false)
   assert.equal(validSchoolSettings({ ...DEFAULT_SCHOOL_SETTINGS, fontFamily: 'Comic Sans MS' }), false)
+})
+
+test('principal level and badge definitions are bounded and ordered', () => {
+  assert.equal(validLevelDefinitions(DEFAULT_LEVELS), true)
+  assert.equal(validLevelDefinitions([{ name: 'Starter', threshold: 0 }, { name: 'Champion', threshold: 100 }]), true)
+  assert.equal(validLevelDefinitions([{ name: 'Starter', threshold: 1 }, { name: 'Champion', threshold: 100 }]), false)
+  assert.equal(validLevelDefinitions([{ name: 'Starter', threshold: 0 }, { name: 'Champion', threshold: 0 }]), false)
+  assert.equal(validLevelDefinitions([{ name: 'Starter', threshold: 0 }, { name: 'starter', threshold: 100 }]), false)
+  assert.equal(validBadgeDefinitions(DEFAULT_BADGES), true)
+  assert.equal(validBadgeDefinitions([{ id: 'new-badge', name: 'New Badge', description: 'Save 75 items', icon: 'Award', metric: 'items', threshold: 75 }]), true)
+  assert.equal(validBadgeDefinitions([{ ...DEFAULT_BADGES[0], icon: 'Unknown' }]), false)
+  assert.equal(validBadgeDefinitions([{ ...DEFAULT_BADGES[0], threshold: 0 }]), false)
+  assert.equal(validBadgeDefinitions([DEFAULT_BADGES[0], DEFAULT_BADGES[0]]), false)
+})
+
+test('week labels use valid Mondays and short display names', () => {
+  assert.equal(validSchoolWeekDate('2026-10-19'), true)
+  assert.equal(validSchoolWeekDate('2026-10-20'), false)
+  assert.equal(validSchoolWeekDate('2026-02-30'), false)
+  assert.equal(validWeekLabel('Week 1 Term 4'), true)
+  assert.equal(validWeekLabel(' W1 '), false)
+  assert.equal(validWeekLabel('A'), false)
 })
