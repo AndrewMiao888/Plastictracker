@@ -95,6 +95,7 @@ const ranked = computed(() => (dashboard.value?.classes || []).map(entry => ({
 const schoolItems = computed(() => ranked.value.reduce((sum, row) => sum + row.items, 0))
 const schoolLunches = computed(() => ranked.value.reduce((sum, row) => sum + row.lunches, 0))
 const schoolWeeklyItems = computed(() => (dashboard.value?.classes || []).reduce((sum, entry) => sum + (entry.weeks[currentWeek()]?.items || 0), 0))
+const weeklyActiveClasses = computed(() => (dashboard.value?.classes || []).filter(entry => entry.weeks[currentWeek()]).length)
 const goal = computed(() => dashboard.value?.goal || 1000)
 const progress = computed(() => Math.min(100, Math.round(schoolItems.value / goal.value * 100)))
 const selectedXp = computed(() => selected.value ? xpFor(selected.value) : 0)
@@ -231,9 +232,20 @@ function changeCount(current: string, amount: number) {
     <main id="overview" class="main">
       <div class="topbar"><div class="breadcrumb">School dashboard <ChevronRight :size="14" /> <strong>Overview</strong></div><div class="top-actions"><span class="date-pill"><CalendarDays :size="15" /> Week of {{ weekLabel(currentWeek()) }}</span><span class="top-avatar"><Leaf :size="17" /></span></div></div>
       <div class="content">
-        <header class="page-heading"><div><div class="eyebrow"><span class="eyebrow-dot" /> PLASTIC-FREE DAY <span v-if="hasSamples" class="sample-badge">SAMPLE DATA</span></div><h1>Small swaps. Big impact.</h1><p>Look what your school is doing together.</p></div><button class="primary-button heading-button" @click="showCreate = true"><Plus :size="18" /> Create class</button></header>
+        <header class="page-heading"><div><div class="eyebrow"><span class="eyebrow-dot" /> ST ANDREW'S PLASTIC-FREE DAY <span v-if="hasSamples" class="sample-badge">SAMPLE DATA</span></div><h1>Small swaps. Big impact.</h1><p>Every lunch counts. See how we're doing together.</p></div><button class="primary-button heading-button" @click="showCreate = true"><Plus :size="18" /> Create class</button></header>
 
-        <section class="hero-panel" aria-label="School goal progress"><div class="hero-copy"><div class="hero-kicker"><Sparkles :size="16" /> SCHOOL GOAL</div><h2>Together, we're making<br>a cleaner tomorrow.</h2><p>Plastic items saved by our school so far</p><div class="hero-number"><strong>{{ schoolItems.toLocaleString() }}</strong><span>/ {{ goal.toLocaleString() }} items</span></div><div class="hero-progress"><span :style="{ width: `${progress}%` }" /></div><div class="hero-foot"><span>{{ progress }}% of school goal</span><span>{{ Math.max(0, goal - schoolItems).toLocaleString() }} to go</span></div></div><div class="hero-visual"><div class="hero-ring" :style="{ '--progress': `${progress}%` }"><div class="hero-ring-inner"><Earth :size="93" :stroke-width="1.25" /><span class="ring-leaf"><Leaf :size="29" fill="currentColor" /></span></div></div><span class="visual-spark spark-one">✦</span><span class="visual-spark spark-two">✳</span><span class="visual-spark spark-three">✦</span></div></section>
+        <section class="hero-panel" aria-label="School goal progress">
+          <div class="hero-copy">
+            <div class="hero-kicker"><Sparkles :size="16" /> SCHOOL GOAL</div>
+            <h2>Together, we're making<br>a cleaner tomorrow.</h2>
+            <p>Plastic items saved by our school so far</p>
+            <div class="hero-number"><strong>{{ schoolItems.toLocaleString() }}</strong><span>/ {{ goal.toLocaleString() }} items</span></div>
+            <div class="hero-progress" role="progressbar" :aria-valuenow="Math.min(schoolItems, goal)" :aria-valuemax="goal" aria-valuemin="0" aria-label="School plastic items goal"><span :style="{ width: `${progress}%` }" /></div>
+            <div class="hero-foot"><span>{{ progress }}% of school goal</span><span>{{ Math.max(0, goal - schoolItems).toLocaleString() }} to go</span></div>
+            <div class="hero-pulse"><span class="pulse-dot" /><span>THIS WEEK</span><strong>{{ schoolWeeklyItems.toLocaleString() }}</strong><span>items saved</span><i /><strong>{{ weeklyActiveClasses }}</strong><span>classes checked in</span></div>
+          </div>
+          <div class="hero-visual"><div class="hero-ring" :style="{ '--progress': `${progress}%` }"><div class="hero-ring-inner"><Earth :size="93" :stroke-width="1.25" /><span class="ring-leaf"><Leaf :size="29" fill="currentColor" /></span></div></div><span class="visual-spark spark-one">✦</span><span class="visual-spark spark-two">✳</span><span class="visual-spark spark-three">✦</span></div>
+        </section>
 
         <section class="stats-grid" aria-label="School statistics"><div v-for="metric in metricRows" :key="metric.label" class="metric surface"><span class="metric-icon" :class="metric.tone"><component :is="metric.icon" :size="23" /></span><div><span class="metric-label">{{ metric.label }}</span><strong>{{ metric.value }}</strong><span class="metric-detail"><ArrowUpRight :size="14" /> {{ metric.detail }}</span></div></div></section>
 

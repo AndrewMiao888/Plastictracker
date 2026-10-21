@@ -8,3 +8,53 @@
 @media(max-width:850px){.app-shell{display:block}.sidebar{height:auto;width:100%;position:relative;z-index:4;padding:13px 20px;border-right:0;border-bottom:1px solid #e8ede7;display:flex;flex-direction:row;align-items:center;justify-content:space-between}.brand{padding:0;font-size:20px}.brand-mark{width:33px;height:33px}.sidebar .side-group,.sidebar-bottom{display:none}.mobile-sample-button{display:flex}.topbar{display:none}.content{padding:27px 20px}.main-grid,.journey-grid{grid-template-columns:1fr 1fr}.checkin,.leaderboard{min-height:0}.form-top{grid-template-columns:1fr}.week-picker{margin-top:8px;justify-content:space-between;padding-left:11px}.metric{height:105px}.metric-label{white-space:normal}.badge-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:700px){.page-heading{align-items:flex-start;gap:12px}.page-heading h1{font-size:26px}.heading-button{padding:0 10px;white-space:nowrap;font-size:11px}.hero-panel{padding:25px;min-height:255px}.hero-copy{width:70%}.hero-copy h2{font-size:23px}.hero-visual{position:absolute;right:-38px;top:32px;opacity:.48}.stats-grid{gap:8px}.metric{height:auto;min-height:101px;padding:14px 10px;gap:7px;display:block}.metric-icon{height:31px;width:31px;margin-bottom:6px}.metric-icon svg{width:18px}.metric strong{font-size:23px}.metric-detail{font-size:9px}.main-grid,.journey-grid{grid-template-columns:1fr}.leaderboard{min-height:350px}.badge-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.activity-section{overflow:hidden}}
 @media(max-width:480px){.content{padding:24px 14px}.sidebar{padding:11px 14px}.page-heading{display:block}.page-heading h1{font-size:25px}.heading-button{margin-top:18px}.hero-panel{padding:22px 19px;min-height:267px}.hero-copy{width:100%}.hero-copy h2{font-size:21px;max-width:270px}.hero-visual{right:-94px;top:31px;opacity:.22}.hero-number strong{font-size:32px}.hero-progress{margin-top:17px}.stats-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:9px}.metric{padding:10px 8px;min-height:109px}.metric-label{font-size:9px;line-height:1.2;min-height:22px}.metric strong{font-size:21px}.metric-detail{font-size:8px;white-space:normal}.metric-detail svg{display:none}.checkin,.leaderboard,.level-card,.badges-card{padding:19px 15px}.section-heading h2,.section-title-row h2{font-size:19px}.section-heading{margin-bottom:20px}.counter-row{gap:7px;padding:10px 8px}.counter-icon{width:32px;height:32px}.counter-icon svg{width:17px}.counter-label strong{font-size:10px}.counter-label small{font-size:9px}.stepper button{width:24px}.stepper input{width:31px}.edit-hint{font-size:9px}.save-button{padding:0 11px}.xp-explainer{font-size:8px;max-width:125px;text-align:right}.table-head,.table-row{grid-template-columns:1.1fr .9fr .45fr .65fr;padding:0 8px;gap:2px}.table-head{font-size:7px}.table-row{font-size:9px}.table-avatar{display:none}.table-class{white-space:nowrap}.activity-count{font-size:9px}.footer{font-size:9px}}
+
+/* Brand refresh */
+.sidebar{background:#173d38;border-color:#234c44}
+.brand{color:#f5faf1}
+.brand-mark{background:#d8ee81;color:#1c5142}
+.brand-accent{color:#d8ee81}
+.brand small,.side-label{color:#8db6a6}
+.side-label-row span{background:#2b594b;color:#d5edbf}
+.side-link,.class-link{color:#c7dbd0}
+.side-link:hover,.class-link:hover,.add-side:hover{background:#265247;color:#fff}
+.side-link.active{background:#d8ee81;color:#1d4d3c}
+.class-link.selected{background:#295548;color:#fff}
+.class-mini-icon{background:#315e4d;color:#d8ee81}
+.selected-dot{background:#d8ee81}
+.add-side{color:#cde987}
+.sidebar-bottom{background:#285347}
+.sidebar-bottom strong{color:#f5faf1}
+.sidebar-bottom p{color:#b5d0bd}
+.sidebar-bottom button{color:#d8ee81}
+.mission-icon{background:#d8ee81;color:#245d43}
+.mobile-sample-button{background:#d8ee81;color:#1d503e}
+.eyebrow{color:#4f8860}
+.eyebrow-dot{background:#f0a172}
+.page-heading h1{color:#173d38}
+.hero-panel{min-height:310px;background:#173d38;border:1px solid #255447;box-shadow:0 10px 28px rgba(23,61,56,.12)}
+.hero-panel:before{background:linear-gradient(115deg,transparent 42%,rgba(90,167,137,.14))}
+.hero-visual{animation:hero-arrive .7s ease-out both}
+.hero-ring{box-shadow:0 0 0 7px rgba(218,238,138,.07)}
+.hero-pulse{display:flex;align-items:center;flex-wrap:wrap;gap:5px 7px;width:max-content;max-width:100%;min-height:36px;margin-top:17px;padding:7px 11px;border:1px solid rgba(201,235,181,.22);border-radius:6px;background:rgba(255,255,255,.06);font-size:10px;color:#bcd9c7;font-weight:700}
+.hero-pulse strong{font-family:Outfit,sans-serif;color:#f5faf0;font-size:15px;line-height:1}
+.hero-pulse>span:nth-child(2){font-size:9px;letter-spacing:1px;color:#d8ee81;margin-right:5px}
+.pulse-dot{width:7px;height:7px;flex:none;border-radius:50%;background:#f2ac81;box-shadow:0 0 0 3px rgba(242,172,129,.18);animation:pulse 2.4s ease-in-out infinite}
+.hero-pulse i{height:15px;width:1px;background:#5a816d;margin:0 4px}
+.metric{position:relative;border-top:3px solid transparent;transition:transform .2s,box-shadow .2s,border-color .2s}
+.metric:nth-child(1){border-top-color:#a8d48a}
+.metric:nth-child(2){border-top-color:#f0ae82}
+.metric:nth-child(3){border-top-color:#83b9c9}
+.metric:hover{transform:translateY(-3px);box-shadow:0 9px 24px rgba(31,72,45,.1)}
+.leader-row{transition:background .2s,transform .2s}
+.leader-row:hover{transform:translateX(3px);background:#f1f7f0}
+.leader-avatar,.badge-icon{transition:transform .2s}
+.leader-row:hover .leader-avatar,.badge.earned:hover .badge-icon{transform:scale(1.1)}
+.badge.earned:nth-child(3n+2) .badge-icon{background:#fff0e4;color:#d5865a}
+.badge.earned:nth-child(3n) .badge-icon{background:#e6f1f4;color:#5b9bb1}
+.level-track span,.hero-progress span{transition:width .7s ease-out}
+@keyframes pulse{50%{box-shadow:0 0 0 6px rgba(242,172,129,.06)}}
+@keyframes hero-arrive{from{opacity:0;transform:translateY(8px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(max-width:700px){.hero-panel{min-height:300px}.hero-pulse{max-width:95%}}
+@media(max-width:480px){.hero-panel{min-height:320px}.hero-pulse{font-size:9px;margin-top:16px;padding:8px}.hero-pulse strong{font-size:13px}.hero-pulse>span:nth-child(2){font-size:8px}.eyebrow{flex-wrap:wrap;line-height:1.3}}
+@media(prefers-reduced-motion:reduce){.hero-visual,.pulse-dot{animation:none}.metric,.leader-row,.leader-avatar,.badge-icon,.level-track span,.hero-progress span{transition:none}}

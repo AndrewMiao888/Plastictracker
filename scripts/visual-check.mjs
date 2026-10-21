@@ -34,6 +34,9 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(origin);
   await page.locator('.hero-number strong').waitFor();
+  assert.equal(await page.locator('link[rel="icon"]').getAttribute('href'), '/favicon.svg');
+  assert.equal((await page.request.get(`${origin}/favicon.svg`)).status(), 200);
+  assert.match(await page.locator('.hero-pulse').innerText(), /items saved.*classes checked in/s);
   assert.equal(await page.locator('.hero-number strong').innerText(), '463');
   await page.screenshot({ path: join(screenshots, 'desktop.png'), fullPage: true });
 
