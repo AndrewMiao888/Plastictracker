@@ -1,8 +1,3 @@
-import { revokeAdminSession } from '../../utils/admin-session'
-import { requireSameOrigin } from '../../utils/session'
+import { signOutDevice } from '../../utils/logout'
 
-export default defineEventHandler(async event => {
-  requireSameOrigin(event)
-  await revokeAdminSession(event)
-  return { ok: true }
-})
+export default defineEventHandler(signOutDevice)

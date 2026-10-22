@@ -22,6 +22,7 @@ const server = spawn(process.execPath, [join(root, '.output', 'server', 'index.m
   stdio: 'pipe',
 })
 let browser
+let setupAdminCookie
 
 function schoolWeek() {
   const local = new Intl.DateTimeFormat('en-CA', {
@@ -34,10 +35,15 @@ function schoolWeek() {
 
 async function postClass(name, password) {
   const response = await fetch(`${origin}/api/classes`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, password }),
+    method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: setupAdminCookie }, body: JSON.stringify({ name, password }),
   })
   assert.equal(response.status, 201)
-  const cookie = response.headers.get('set-cookie')?.split(';')[0]
+  assert.ok(!response.headers.get('set-cookie')?.includes('plastic_class_session='), 'Principal creation must not create a class session')
+  const login = await fetch(`${origin}/api/auth/login`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, password }),
+  })
+  assert.equal(login.status, 200)
+  const cookie = login.headers.get('set-cookie')?.split(';')[0]
   assert.ok(cookie?.startsWith('plastic_class_session='))
   return cookie
 }
@@ -61,6 +67,12 @@ try {
     if (attempt === 79) throw new Error('QA server did not start.')
   }
   await mkdir(screenshots, { recursive: true })
+  const setupLogin = await fetch(`${origin}/api/admin/login`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: adminTestPassword }),
+  })
+  assert.equal(setupLogin.status, 200)
+  setupAdminCookie = setupLogin.headers.get('set-cookie')?.split(';')[0]
+  assert.ok(setupAdminCookie?.startsWith('plastic_admin_session='))
   browser = await chromium.launch({ channel: 'msedge', headless: true })
   const emptyPage = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 })
   await emptyPage.goto(origin)
@@ -68,6 +80,7 @@ try {
   assert.match(await emptyPage.locator('.hero-empty').innerText(), /sustainable journey starts here/i)
   assert.match(await emptyPage.locator('.table-empty').innerText(), /first entry will appear as soon as a class checks in/i)
   assert.equal(await emptyPage.locator('.hero-visual').getAttribute('data-stage'), 'seed')
+  assert.equal(await emptyPage.getByRole('button', { name: 'Create class', exact: true }).count(), 0)
   assert.ok((await emptyPage.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 0)
   await emptyPage.screenshot({ path: join(screenshots, 'empty-mobile.png'), fullPage: true })
   await emptyPage.close()
@@ -113,7 +126,16 @@ try {
   assert.equal(await page.locator('.hero-visual').getAttribute('data-stage'), 'sprout')
   assert.equal(await page.locator('.hero-empty').count(), 0)
   assert.equal(await page.locator('.table-head').isVisible(), true)
-  assert.equal(await page.locator('.weekly-chart .chart-column').count(), 8)
+  assert.equal(await page.locator('.weekly-chart').count(), 0)
+  assert.equal(await page.getByText('8-WEEK MOMENTUM', { exact: true }).count(), 0)
+  assert.deepEqual(await page.locator('.week-days li > span').allTextContents(), ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
+  assert.equal(await page.locator('.week-days [aria-current="date"]').count(), 1)
+  await page.locator('#check-in').screenshot({ path: join(screenshots, 'check-in-calendar-desktop.png') })
+  assert.equal(await page.locator('.week-days [aria-current="date"]').evaluate(element => getComputedStyle(element).fontWeight), '800')
+  await page.getByRole('button', { name: 'Previous week', exact: true }).click()
+  assert.equal(await page.locator('.week-days [aria-current="date"]').count(), 0)
+  await page.getByRole('button', { name: 'Next week', exact: true }).click()
+  assert.equal(await page.locator('.week-days [aria-current="date"]').count(), 1)
   assert.equal(await page.locator('.challenge-card').isVisible(), true)
   assert.match(await page.locator('.weekly-tip').innerText(), /Small Swap of the Week/)
   assert.equal(await page.locator('.stepper').count(), 0)
@@ -172,6 +194,9 @@ try {
   assert.match(await mobile.locator('.activity-table .table-row').first().innerText(), /Items saved/i)
   const overflow = await mobile.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
   assert.ok(overflow <= 0, `Mobile page overflows by ${overflow}px.`)
+  const dayPositions = await mobile.locator('.week-days li').evaluateAll(days => days.map(day => ({ x: day.getBoundingClientRect().x, y: day.getBoundingClientRect().y })))
+  assert.ok(dayPositions.every((day, index) => day.y === dayPositions[0].y && (!index || day.x > dayPositions[index - 1].x)), 'Calendar days must stay in one left-to-right row on mobile')
+  await mobile.locator('#check-in').screenshot({ path: join(screenshots, 'check-in-calendar-mobile.png') })
   await mobile.screenshot({ path: join(screenshots, 'mobile.png'), fullPage: true })
   await mobile.locator('#leaderboard').getByRole('button', { name: 'Streak' }).click()
   assert.match(await mobile.locator('#leaderboard .leader-row').first().innerText(), /week in a row/)
@@ -191,26 +216,39 @@ try {
   await writeFile(dataFile, JSON.stringify(legacyData))
   await page.reload()
   await page.locator('#class-select').selectOption('9Z')
-  assert.match(await page.locator('.locked-state').innerText(), /Claim Class 9Z/)
-  assert.equal((await page.request.post(`${origin}/api/classes/9Z/claim`, { data: { password: 'short' } })).status(), 400)
+  assert.match(await page.locator('.locked-state').innerText(), /Class 9Z is awaiting setup/)
+  assert.equal(await page.getByRole('button', { name: 'Set class password', exact: true }).count(), 0)
+  assert.equal((await page.request.post(`${origin}/api/classes/9Z/claim`, { data: { password: seedPassword } })).status(), 401)
   const foreignClaim = await fetch(`${origin}/api/classes/9Z/claim`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://other.example' },
     body: JSON.stringify({ password: seedPassword }),
   })
   assert.equal(foreignClaim.status, 403)
-  await page.getByRole('button', { name: 'Claim Class 9Z' }).click()
+  assert.equal((await page.request.post(`${origin}/api/admin/login`, { data: { password: adminTestPassword } })).status(), 200)
+  await page.reload()
+  await page.locator('#class-select').selectOption('9Z')
+  assert.equal((await page.request.post(`${origin}/api/classes/9Z/claim`, { data: { password: 'short' } })).status(), 400)
+  await page.getByRole('button', { name: 'Set class password', exact: true }).click()
   await page.locator('#claim-password').fill(seedPassword)
   await page.locator('#confirm-claim-password').fill('different-password')
-  await page.getByRole('button', { name: 'Claim class', exact: true }).click()
+  await page.locator('.modal').getByRole('button', { name: 'Set class password', exact: true }).click()
   assert.match(await page.locator('.form-error').innerText(), /do not match/i)
   await page.locator('#confirm-claim-password').fill(seedPassword)
-  await page.getByRole('button', { name: 'Claim class', exact: true }).click()
+  await page.locator('.modal').getByRole('button', { name: 'Set class password', exact: true }).click()
   await page.locator('.modal').waitFor({ state: 'hidden' })
   assert.equal(await page.locator('.stepper').count(), 2)
   assert.equal((await page.request.post(`${origin}/api/classes/9Z/claim`, { data: { password: newPassword } })).status(), 409)
   const claimedData = await (await fetch(`${origin}/api/dashboard`)).json()
   assert.equal(claimedData.classes.find(entry => entry.name === '9Z')?.claimable, false)
   assert.ok(!JSON.stringify(claimedData).includes('passwordHash'))
+  assert.equal((await page.request.get(`${origin}/api/auth/session`)).ok(), true)
+  assert.deepEqual(await (await page.request.get(`${origin}/api/auth/session`)).json(), { className: null })
+  await page.locator('.topbar').getByRole('button', { name: 'Sign out of all accounts', exact: true }).click()
+  await page.locator('#admin').waitFor({ state: 'hidden' })
+  await page.getByRole('button', { name: 'Sign in to Class 9Z' }).click()
+  await page.locator('#login-password').fill(seedPassword)
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await page.locator('.modal').waitFor({ state: 'hidden' })
   await page.getByRole('button', { name: 'Manage' }).click()
   await page.getByRole('button', { name: 'Delete this class' }).click()
   await page.locator('#delete-confirm-name').fill('9Z')
@@ -226,8 +264,26 @@ try {
   assert.equal((await fetch(`${origin}/api/classes/6AB`, { method: 'DELETE' })).status, 401)
   assert.equal((await fetch(`${origin}/api/sample-classes`, { method: 'DELETE' })).status, 410)
   assert.equal((await fetch(`${origin}/api/classes`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: '8Q' }),
-  })).status, 400)
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: '8Q', password: seedPassword }),
+  })).status, 401)
+  assert.equal((await fetch(`${origin}/api/classes`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: seedCookies.get('5B') },
+    body: JSON.stringify({ name: '8Q', password: seedPassword }),
+  })).status, 401)
+  for (const [path, method, data] of [
+    ['/api/classes/6AB/avatar', 'PUT', { style: 'classic' }],
+    [`/api/classes/6AB/weeks/${week}`, 'DELETE'],
+    ['/api/auth/password', 'PUT', { currentPassword: seedPassword, newPassword }],
+    ['/api/admin/classes/6AB', 'DELETE'],
+    ['/api/admin/classes/6AB/password', 'PUT', { password: newPassword }],
+    ['/api/admin/password', 'PUT', { currentPassword: adminTestPassword, newPassword }],
+    [`/api/admin/weeks/${week}/label`, 'DELETE'],
+  ]) {
+    const response = await fetch(`${origin}${path}`, {
+      method, headers: { 'Content-Type': 'application/json' }, body: data ? JSON.stringify(data) : undefined,
+    })
+    assert.equal(response.status, 401, `${method} ${path} must reject public writes`)
+  }
   const guardedCookie = await postClass('8Q', seedPassword)
   const foreignWrite = await fetch(`${origin}/api/classes/8Q/weeks/${week}`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: guardedCookie, Origin: 'https://other.example' },
@@ -264,6 +320,9 @@ try {
   const sessionCookie = (await page.context().cookies()).find(cookie => cookie.name === 'plastic_class_session')
   assert.equal(sessionCookie?.httpOnly, true)
   assert.ok((sessionCookie?.expires || 0) > Date.now() / 1000 + 150 * 24 * 60 * 60)
+  await page.reload()
+  assert.equal(await page.locator('.stepper').count(), 2, 'Class login survives reload')
+  assert.equal((await page.request.put(`${origin}/api/classes/6AB/avatar`, { data: { style: 'starlight' } })).status(), 403)
   await Promise.all([
     page.waitForResponse(response => response.url().endsWith('/api/classes/6AB/avatar') && response.status() === 200),
     page.locator('.avatar-options button').filter({ hasText: 'Dew Drop' }).click(),
@@ -276,10 +335,13 @@ try {
   await page.locator('.stepper input').nth(1).fill('60')
   await page.locator('.save-button').click()
   await waitForTotal(page, '132')
-  await page.getByRole('button', { name: 'Sign out' }).click()
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click()
   await page.locator('.locked-state').waitFor()
   assert.equal(await page.locator('.stepper').count(), 0)
 
+  assert.equal(await page.locator('.heading-button').count(), 0)
+  assert.equal((await page.request.post(`${origin}/api/admin/login`, { data: { password: adminTestPassword } })).status(), 200)
+  await page.reload()
   await page.locator('.heading-button').click()
   await page.locator('#class-name').fill('55A')
   await page.locator('#new-password').fill(newPassword)
@@ -291,6 +353,13 @@ try {
   await page.locator('.modal').waitFor({ state: 'hidden' })
   assert.equal(await page.locator('#class-select').inputValue(), '7D')
   assert.equal(await page.locator('.stepper').count(), 2)
+  assert.deepEqual(await (await page.request.get(`${origin}/api/auth/session`)).json(), { className: null })
+  await page.locator('.topbar').getByRole('button', { name: 'Sign out of all accounts', exact: true }).click()
+  await page.locator('#admin').waitFor({ state: 'hidden' })
+  await page.getByRole('button', { name: 'Sign in to Class 7D' }).click()
+  await page.locator('#login-password').fill(newPassword)
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await page.locator('.modal').waitFor({ state: 'hidden' })
   const wrongClass = await page.request.put(`${origin}/api/classes/6AB/weeks/${week}`, { data: { lunches: 1, items: 1 } })
   assert.equal(wrongClass.status(), 403)
   await page.locator('.stepper input').nth(0).fill('12')
@@ -307,7 +376,7 @@ try {
   await page.locator('#confirm-updated-password').fill(changedPassword)
   await page.getByRole('button', { name: 'Update password' }).click()
   await page.locator('.modal').waitFor({ state: 'hidden' })
-  await page.getByRole('button', { name: 'Sign out' }).click()
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click()
   await page.getByRole('button', { name: 'Sign in to Class 7D' }).click()
   await page.locator('#login-password').fill(newPassword)
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
@@ -351,6 +420,13 @@ try {
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await page.locator('.modal').waitFor({ state: 'hidden' })
   await page.locator('#admin').waitFor()
+  await page.locator('#class-select').selectOption('3C')
+  await Promise.all([
+    page.waitForResponse(response => response.url().endsWith('/api/classes/3C/avatar') && response.status() === 200),
+    page.locator('.avatar-options button').filter({ hasText: 'Starlight' }).click(),
+  ])
+  assert.equal((await (await fetch(`${origin}/api/dashboard`)).json()).classes.find(entry => entry.name === '3C')?.avatarStyle, 'starlight')
+  await page.locator('#class-select').selectOption('6AB')
   await page.screenshot({ path: join(screenshots, 'principal-desktop.png'), fullPage: true })
   await page.setViewportSize({ width: 390, height: 844 })
   const adminOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
@@ -497,8 +573,49 @@ try {
     body: JSON.stringify({ password: changedAdminPassword }),
   })
   assert.equal(newAdminLogin.status, 200)
+  for (const endpoint of ['/api/auth/logout', '/api/admin/logout']) {
+    const classLogin = await fetch(`${origin}/api/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: '6AB', password: seedPassword }),
+    })
+    const principalLogin = await fetch(`${origin}/api/admin/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: changedAdminPassword }),
+    })
+    const bothCookies = [classLogin, principalLogin].map(response => response.headers.get('set-cookie')?.split(';')[0]).join('; ')
+    const foreignLogout = await fetch(`${origin}${endpoint}`, {
+      method: 'POST', headers: { Cookie: bothCookies, Origin: 'https://other.example' },
+    })
+    assert.equal(foreignLogout.status, 403)
+    const logout = await fetch(`${origin}${endpoint}`, { method: 'POST', headers: { Cookie: bothCookies } })
+    assert.equal(logout.status, 200)
+    assert.match(logout.headers.get('set-cookie'), /plastic_class_session=;/)
+    assert.match(logout.headers.get('set-cookie'), /plastic_admin_session=;/)
+    assert.deepEqual(await (await fetch(`${origin}/api/auth/session`, { headers: { Cookie: bothCookies } })).json(), { className: null })
+    assert.deepEqual(await (await fetch(`${origin}/api/admin/session`, { headers: { Cookie: bothCookies } })).json(), { admin: false })
+    assert.equal((await fetch(`${origin}/api/admin/goal`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: bothCookies }, body: JSON.stringify({ goal: 2000 }),
+    })).status, 401)
+    assert.equal((await fetch(`${origin}/api/classes/6AB/weeks/${week}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: bothCookies }, body: JSON.stringify({ lunches: 1, items: 1 }),
+    })).status, 401)
+  }
+  for (const withPrincipal of [false, true]) {
+    assert.equal((await mobile.request.post(`${origin}/api/auth/login`, { data: { name: '6AB', password: seedPassword } })).status(), 200)
+    if (withPrincipal) assert.equal((await mobile.request.post(`${origin}/api/admin/login`, { data: { password: changedAdminPassword } })).status(), 200)
+    await mobile.reload()
+    assert.equal(await mobile.locator('.stepper').count(), 2)
+    assert.ok((await mobile.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 0)
+    await mobile.screenshot({ path: join(screenshots, withPrincipal ? 'principal-logout-mobile.png' : 'class-logout-mobile.png'), fullPage: true })
+    await mobile.locator('.sidebar').screenshot({ path: join(screenshots, withPrincipal ? 'principal-mobile-header.png' : 'class-mobile-header.png') })
+    await mobile.locator('.mobile-account-actions').getByRole('button', { name: 'Sign out of all accounts', exact: true }).click()
+    await mobile.locator('.locked-state').waitFor()
+    assert.equal(await mobile.locator('.stepper').count(), 0)
+    assert.equal(await mobile.locator('#admin').count(), 0)
+    assert.ok(!(await mobile.context().cookies()).some(cookie => ['plastic_class_session', 'plastic_admin_session'].includes(cookie.name)))
+    await mobile.reload()
+    assert.equal(await mobile.locator('.stepper').count(), 0)
+  }
   assert.deepEqual(errors, [])
-  console.log('Public, claim, class, principal, and visual checks passed. Screenshots: .qa/desktop.png, .qa/mobile.png')
+  console.log('Read-only public access, principal setup, remembered class access, all-account logout, principal controls, and visual checks passed. Screenshots: .qa/desktop.png, .qa/mobile.png')
 } finally {
   await browser?.close()
   server.kill()

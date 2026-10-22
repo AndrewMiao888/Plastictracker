@@ -1,7 +1,3 @@
-import { requireSameOrigin, revokeClassSession } from '../../utils/session'
+import { signOutDevice } from '../../utils/logout'
 
-export default defineEventHandler(async event => {
-  requireSameOrigin(event)
-  await revokeClassSession(event)
-  return { ok: true }
-})
+export default defineEventHandler(signOutDevice)

@@ -13,9 +13,9 @@ Open `http://localhost:5173`. Without a database connection, local development s
 
 ## Class Access
 
-Create a class using a valid name and a password of 10 to 128 characters. Creation signs you in. Sign in later to add, edit, or delete weekly entries, change the class password, or delete the class. Password changes revoke other sessions; class deletion also removes its entries. Sessions use HTTP-only cookies and expire after 14 days. Five incorrect password attempts lock sign-in for 15 minutes.
+The principal creates classes using a valid name and a password of 10 to 128 characters. Class members sign in to add, edit, or delete their own weekly entries, change the class password, or delete their class. Password changes revoke other sessions; class deletion also removes its entries. Class sessions use HTTP-only cookies and persist on the device for up to 180 days. Five incorrect password attempts lock sign-in for 15 minutes.
 
-The dashboard and all class progress remain public without sign-in. Password hashes and sessions are not returned by the dashboard API. Classes created before password protection show a **Claim class** action. The first person to claim one sets its password and becomes signed in; later visitors must sign in with that password. Class members should coordinate who claims their class first.
+The dashboard and all class progress remain public and read-only without sign-in. Password hashes and sessions are not returned by the dashboard API. Only the principal can set up passwords for classes created before password protection. Creating or setting up a class does not create a separate class session for the principal. Every sign-out action clears both principal and class access on that device, invalidates the server-side sessions, and leaves public progress visible. Sign-out is available in the desktop toolbar and mobile header.
 
 ## Principal Access
 
@@ -36,6 +36,6 @@ The visual check uses an installed Microsoft Edge browser and writes desktop and
 
 The Vercel project is `plastictrackerstandrews`, with a dedicated Neon Postgres database in Sydney. Vercel supplies `DATABASE_URL`; Nuxt's server routes migrate their tables on first use. Without `DATABASE_URL`, a Vercel deployment returns an error instead of silently losing writes. Set `DATA_FILE` only when choosing a different local JSON store.
 
-The one-time `scripts/enable-self-claim.mjs` migration is scoped to existing classes 5C, 5H, and 5P in the dedicated tracker database. It verifies their temporary passwords before clearing them and revoking sessions. It does not change classes whose passwords have since changed.
+The historical `scripts/enable-self-claim.mjs` migration was scoped to classes 5C, 5H, and 5P in the dedicated tracker database. Public claiming is now disabled; any class still awaiting a password must be set up by the principal.
 
 Class names must match `/^[0-9][a-zA-Z]{1,3}$/`; names are stored in uppercase. Weekly entries can be added, edited, or deleted for the current or a past Monday-starting week. XP is earned at 2 per lunch and 3 per plastic item saved, plus any principal-awarded bonus XP.
