@@ -9,7 +9,7 @@
     "preview": "nuxt preview --port 5173",
     "postinstall": "nuxt prepare",
     "typecheck": "nuxt typecheck",
-    "test": "node --experimental-strip-types --test server/utils/tracker.test.ts server/utils/password.test.ts",
+    "test": "node --experimental-strip-types --test server/utils/tracker.test.ts server/utils/password.test.ts shared/utils/weekly-streak.test.ts",
     "test:visual": "node scripts/visual-check.mjs"
   },
   "dependencies": {

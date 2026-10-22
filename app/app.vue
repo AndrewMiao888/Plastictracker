@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch, type Component } from 'vue'
+import { weeklyStreak } from '~~/shared/utils/weekly-streak'
 import {
   ArrowRight, ArrowUpRight, Award, CalendarDays, Check, ChevronDown,
   ChevronLeft, ChevronRight, CircleCheck, Earth, Leaf, Medal, Minus,
   PackageCheck, Plus, Recycle, Save, Sandwich, Sparkles, Sprout,
   Trash2, Trophy, UsersRound, X, LockKeyhole, LogIn, LogOut, Settings2,
-  Eye, EyeOff, ShieldCheck, KeyRound, TreePine, TreeDeciduous, Trees,
+  Eye, EyeOff, ShieldCheck, KeyRound, TreePine, TreeDeciduous, Trees, Flame,
 } from '@lucide/vue'
 
 type WeekEntry = { lunches: number; items: number; updatedAt: string }
@@ -173,7 +174,7 @@ const confirmAdminPassword = ref('')
 const adminPasswordError = ref('')
 const toast = ref('')
 const celebration = ref<Celebration | null>(null)
-const leaderboardMode = ref<'items' | 'xp'>('items')
+const leaderboardMode = ref<'items' | 'xp' | 'streak'>('items')
 
 const selected = computed(() => dashboard.value?.classes.find(entry => entry.name === selectedName.value))
 const signedInName = computed(() => authSession.value?.className || null)
@@ -204,7 +205,7 @@ watch(toast, value => {
 })
 
 const ranked = computed(() => (dashboard.value?.classes || []).map(entry => ({
-  entry, ...totals(entry), xp: xpFor(entry),
+  entry, ...totals(entry), xp: xpFor(entry), streak: weeklyStreak(entry.weeks, currentWeek()),
 })).sort((a, b) => b.items - a.items || a.entry.name.localeCompare(b.entry.name)))
 const leaderboardRows = computed(() => {
   const metric = leaderboardMode.value
@@ -232,6 +233,11 @@ const goalStage = computed(() => {
   return { icon: Trees, label: 'Goal reached!', name: 'forest' }
 })
 const selectedXp = computed(() => selected.value ? xpFor(selected.value) : 0)
+const selectedStreak = computed(() => selected.value ? weeklyStreak(selected.value.weeks, currentWeek()) : 0)
+const selectedCheckedInThisWeek = computed(() => {
+  const entry = selected.value?.weeks[currentWeek()]
+  return !!entry && (entry.lunches > 0 || entry.items > 0)
+})
 const selectedLevel = computed(() => levelFor(selectedXp.value))
 const nextLevel = computed(() => levels.value[selectedLevel.value + 1])
 const currentThreshold = computed(() => levels.value[selectedLevel.value]!.threshold)
@@ -722,14 +728,14 @@ function changeCount(current: string, amount: number) {
             </div><div v-else class="empty-state"><span><UsersRound :size="28" /></span><h3>Start with a class</h3><p>Create your first class to begin logging plastic-free days.</p><button class="primary-button" @click="showCreate = true"><Plus :size="17" /> Create class</button></div>
           </section>
 
-          <section id="leaderboard" class="surface leaderboard"><div class="section-heading"><div><div class="section-kicker">FRIENDLY COMPETITION</div><h2>Leaderboard</h2><p>Top classes by {{ leaderboardMode === 'items' ? 'plastic items saved' : 'XP earned' }}.</p></div><span class="heading-icon yellow"><Trophy :size="21" /></span></div>
-            <div class="leaderboard-tabs" role="group" aria-label="Leaderboard metric"><button type="button" :aria-pressed="leaderboardMode === 'items'" :class="{ active: leaderboardMode === 'items' }" @click="leaderboardMode = 'items'"><PackageCheck :size="15" /> Items saved</button><button type="button" :aria-pressed="leaderboardMode === 'xp'" :class="{ active: leaderboardMode === 'xp' }" @click="leaderboardMode = 'xp'"><Sparkles :size="15" /> XP earned</button></div>
-            <div v-if="leaderboardRows.length" class="leader-list"><button v-for="row in leaderboardRows" :key="row.entry.name" class="leader-row" :class="{ 'leader-selected': row.entry.name === selectedName }" @click="selectedName = row.entry.name; scrollTo('check-in')"><span class="leader-rank" :class="`rank-${row.rank}`"><Medal v-if="row.rank <= 3" :size="17" /><span>{{ row.tied ? '=' : '' }}{{ row.rank }}</span></span><span class="leader-avatar">{{ row.entry.name[0] }}</span><span class="leader-name"><strong>Class {{ row.entry.name }}</strong><small>Level {{ levelFor(row.xp) + 1 }} · {{ levels[levelFor(row.xp)]?.name }}</small><em v-if="row.tied" class="leader-tie">Tied for #{{ row.rank }}</em></span><span class="leader-score"><strong>{{ (leaderboardMode === 'items' ? row.items : row.xp).toLocaleString() }}</strong><small>{{ leaderboardMode === 'items' ? 'items saved' : 'XP earned' }}</small></span></button></div><div v-else class="empty-state compact"><span><Trophy :size="28" /></span><h3>The leaderboard starts here</h3><p>Log a class week to take the first spot.</p></div>
+          <section id="leaderboard" class="surface leaderboard"><div class="section-heading"><div><div class="section-kicker">FRIENDLY COMPETITION</div><h2>Leaderboard</h2><p>{{ leaderboardMode === 'streak' ? 'Longest active weekly streaks.' : `Top classes by ${leaderboardMode === 'items' ? 'plastic items saved' : 'XP earned'}.` }}</p></div><span class="heading-icon yellow"><Trophy :size="21" /></span></div>
+            <div class="leaderboard-tabs" role="group" aria-label="Leaderboard metric"><button type="button" :aria-pressed="leaderboardMode === 'items'" :class="{ active: leaderboardMode === 'items' }" @click="leaderboardMode = 'items'"><PackageCheck :size="15" /><span class="leader-tab-full">Items saved</span><span class="leader-tab-short">Items</span></button><button type="button" :aria-pressed="leaderboardMode === 'xp'" :class="{ active: leaderboardMode === 'xp' }" @click="leaderboardMode = 'xp'"><Sparkles :size="15" /><span class="leader-tab-full">XP earned</span><span class="leader-tab-short">XP</span></button><button type="button" :aria-pressed="leaderboardMode === 'streak'" :class="{ active: leaderboardMode === 'streak' }" @click="leaderboardMode = 'streak'"><Flame :size="15" /><span class="leader-tab-full">Streak</span><span class="leader-tab-short">Streak</span></button></div>
+            <div v-if="leaderboardRows.length" class="leader-list"><button v-for="row in leaderboardRows" :key="row.entry.name" class="leader-row" :class="{ 'leader-selected': row.entry.name === selectedName }" @click="selectedName = row.entry.name; scrollTo('check-in')"><span class="leader-rank" :class="`rank-${row.rank}`"><Medal v-if="row.rank <= 3" :size="17" /><span>{{ row.tied ? '=' : '' }}{{ row.rank }}</span></span><span class="leader-avatar">{{ row.entry.name[0] }}</span><span class="leader-name"><strong>Class {{ row.entry.name }}</strong><small>Level {{ levelFor(row.xp) + 1 }} · {{ levels[levelFor(row.xp)]?.name }}</small><em v-if="row.tied" class="leader-tie">Tied for #{{ row.rank }}</em></span><span class="leader-score"><strong>{{ (leaderboardMode === 'items' ? row.items : leaderboardMode === 'xp' ? row.xp : row.streak).toLocaleString() }}</strong><small>{{ leaderboardMode === 'items' ? 'items saved' : leaderboardMode === 'xp' ? 'XP earned' : row.streak === 1 ? 'week in a row' : 'weeks in a row' }}</small></span></button></div><div v-else class="empty-state compact"><span><Trophy :size="28" /></span><h3>The leaderboard starts here</h3><p>Log a class week to take the first spot.</p></div>
           </section>
         </div>
 
         <section id="achievements" class="journey-section"><div class="section-title-row"><div><div class="section-kicker">KEEP GROWING</div><h2>{{ selected ? `Class ${selected.name}'s journey` : 'Class journey' }}</h2></div></div>
-          <div class="journey-grid"><div class="surface level-card"><div class="level-top"><span class="level-emblem"><Leaf :size="34" /></span><span class="level-number">LEVEL {{ selectedLevel + 1 }} OF {{ levels.length }}</span></div><h3>{{ selected ? levels[selectedLevel]?.name : levels[0]?.name }}</h3><p>{{ selected ? `${selectedXp} XP earned so far${selected.bonusXp ? `, including ${selected.bonusXp} bonus XP` : ''}` : 'Choose a class to begin the journey' }}</p><div class="xp-explainer" title="Each plastic-free lunch earns 2 XP and each plastic item saved earns 3 XP. Principal bonus XP counts toward levels too."><Sparkles :size="15" /><span>2 XP per lunch <b>·</b> 3 XP per item</span></div><div class="level-track"><span :style="{ width: `${selected ? levelProgress : 0}%` }" /></div><div class="level-track-label"><span>{{ selectedXp }} XP</span><span>{{ nextLevel ? `${nextLevel.threshold} XP to Level ${selectedLevel + 2}` : 'Highest level reached' }}</span></div><div class="level-pips"><span v-for="(level, index) in levels" :key="level.name" :class="{ reached: index <= selectedLevel && selected }" :title="`Level ${index + 1}: ${level.name}`"><Check v-if="index < selectedLevel && selected" :size="13" /><template v-else>{{ index + 1 }}</template></span></div></div>
+          <div class="journey-grid"><div class="surface level-card"><div class="level-top"><span class="level-emblem"><Leaf :size="34" /></span><span class="level-number">LEVEL {{ selectedLevel + 1 }} OF {{ levels.length }}</span></div><h3>{{ selected ? levels[selectedLevel]?.name : levels[0]?.name }}</h3><p>{{ selected ? `${selectedXp} XP earned so far${selected.bonusXp ? `, including ${selected.bonusXp} bonus XP` : ''}` : 'Choose a class to begin the journey' }}</p><div class="xp-explainer" title="Each plastic-free lunch earns 2 XP and each plastic item saved earns 3 XP. Principal bonus XP counts toward levels too."><Sparkles :size="15" /><span>2 XP per lunch <b>·</b> 3 XP per item</span></div><div class="streak-summary" :class="{ active: selectedStreak > 0 }"><span class="streak-icon"><Flame :size="19" /></span><span><strong>{{ selectedStreak ? `${selectedStreak}-week streak` : 'No streak yet' }}</strong><small>{{ selectedCheckedInThisWeek ? 'This week counts toward your streak.' : selectedStreak ? 'Check in this week to keep it going.' : 'Log a lunch or item to start a streak.' }}</small></span></div><div class="level-track"><span :style="{ width: `${selected ? levelProgress : 0}%` }" /></div><div class="level-track-label"><span>{{ selectedXp }} XP</span><span>{{ nextLevel ? `${nextLevel.threshold} XP to Level ${selectedLevel + 2}` : 'Highest level reached' }}</span></div><div class="level-pips"><span v-for="(level, index) in levels" :key="level.name" :class="{ reached: index <= selectedLevel && selected }" :title="`Level ${index + 1}: ${level.name}`"><Check v-if="index < selectedLevel && selected" :size="13" /><template v-else>{{ index + 1 }}</template></span></div></div>
             <div class="surface badges-card"><div class="badges-heading"><h3>Achievement badges</h3><span>{{ selected ? badges.filter(badge => badgeEarned(selected!, badge)).length : 0 }} / {{ badges.length }} unlocked</span></div><div class="badge-grid"><div v-for="badge in badges" :key="badge.id" class="badge" :class="{ earned: selected && badgeEarned(selected, badge), near: selected && badgeNear(selected, badge), locked: !selected || !badgeEarned(selected, badge) }" :title="badge.description" :aria-label="`${badge.name} - ${badge.description}`"><span class="badge-icon"><component :is="badgeIcons[badge.icon] || Award" :size="22" :stroke-width="1.8" /></span><strong>{{ badge.name }}</strong><small>{{ badge.description }}</small><em v-if="selected && badgeNear(selected, badge)" class="badge-near-hint">{{ badgeRemaining(selected, badge) }}</em></div></div></div></div>
         </section>
 
