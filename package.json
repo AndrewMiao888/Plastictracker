@@ -15,7 +15,9 @@
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",
     "@lucide/vue": "^1.60.0",
-    "nuxt": "^4.6.2"
+    "nuxt": "^4.6.2",
+    "vue": "latest",
+    "vue-router": "latest"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
