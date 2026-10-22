@@ -10,9 +10,9 @@
 @media(max-width:480px){.content{padding:24px 14px}.sidebar{padding:11px 14px}.page-heading{display:block}.page-heading h1{font-size:25px}.heading-button{margin-top:18px}.hero-panel{padding:22px 19px;min-height:267px}.hero-copy{width:100%}.hero-copy h2{font-size:21px;max-width:270px}.hero-visual{right:-94px;top:31px;opacity:.22}.hero-number strong{font-size:32px}.hero-progress{margin-top:17px}.stats-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:9px}.metric{padding:10px 8px;min-height:109px}.metric-label{font-size:9px;line-height:1.2;min-height:22px}.metric strong{font-size:21px}.metric-detail{font-size:8px;white-space:normal}.metric-detail svg{display:none}.checkin,.leaderboard,.level-card,.badges-card{padding:19px 15px}.section-heading h2,.section-title-row h2{font-size:19px}.section-heading{margin-bottom:20px}.counter-row{gap:7px;padding:10px 8px}.counter-icon{width:32px;height:32px}.counter-icon svg{width:17px}.counter-label strong{font-size:10px}.counter-label small{font-size:9px}.stepper button{width:24px}.stepper input{width:31px}.edit-hint{font-size:9px}.save-button{padding:0 11px}.xp-explainer{font-size:8px;max-width:125px;text-align:right}.table-head,.table-row{grid-template-columns:1.1fr .9fr .45fr .65fr;padding:0 8px;gap:2px}.table-head{font-size:7px}.table-row{font-size:9px}.table-avatar{display:none}.table-class{white-space:nowrap}.activity-count{font-size:9px}.footer{font-size:9px}}
 
 /* Brand refresh */
-.sidebar{background:#173d38;border-color:#234c44;height:calc(100vh - 65px);margin-top:65px;padding-top:24px;top:65px}
+.sidebar{background:#173d38;border-color:#234c44;height:100vh;margin-top:0;padding-top:28px;top:0}
 .main{padding-top:65px}
-.topbar{position:fixed;top:0;left:0;right:0;z-index:12;padding-left:280px;backdrop-filter:saturate(140%) blur(12px)}
+.topbar{position:fixed;top:0;left:242px;right:0;z-index:12;padding:0 38px;backdrop-filter:saturate(140%) blur(12px)}
 .brand{color:#f5faf1}
 .brand-mark{background:#d8ee81;color:#1c5142}
 .brand-accent{color:#d8ee81}
@@ -230,7 +230,7 @@
 .streak-summary small{font-size:9px;line-height:1.3}
 .brand{border:0;background:transparent;text-align:left;cursor:pointer}
 .brand:hover .brand-accent{text-decoration:underline;text-underline-offset:3px}
-@media(max-width:1100px){.topbar{padding-left:229px}}
+@media(max-width:1100px){.topbar{left:205px;padding:0 24px}}
 @media(max-width:850px){.main{padding-top:0}.sidebar{background:#173d38;margin-top:0;height:auto;padding-top:13px;top:0}}
 @media(max-width:1100px){.leader-tab-full{display:none}.leader-tab-short{display:inline}.leaderboard-tabs button{padding:5px 4px}}
 @media(max-width:480px){.leader-row{gap:7px}.leader-rank{width:34px;font-size:11px}.leader-rank svg{width:14px}.leader-avatar{width:30px;height:30px}.leaderboard-tabs button{font-size:10px}}
