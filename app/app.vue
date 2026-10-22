@@ -173,6 +173,7 @@ const confirmAdminPassword = ref('')
 const adminPasswordError = ref('')
 const toast = ref('')
 const celebration = ref<Celebration | null>(null)
+const leaderboardMode = ref<'items' | 'xp'>('items')
 
 const selected = computed(() => dashboard.value?.classes.find(entry => entry.name === selectedName.value))
 const signedInName = computed(() => authSession.value?.className || null)
@@ -204,7 +205,19 @@ watch(toast, value => {
 
 const ranked = computed(() => (dashboard.value?.classes || []).map(entry => ({
   entry, ...totals(entry), xp: xpFor(entry),
-})).sort((a, b) => b.items - a.items || b.lunches - a.lunches || a.entry.name.localeCompare(b.entry.name)))
+})).sort((a, b) => b.items - a.items || a.entry.name.localeCompare(b.entry.name)))
+const leaderboardRows = computed(() => {
+  const metric = leaderboardMode.value
+  const rows = [...ranked.value].sort((a, b) => b[metric] - a[metric] || a.entry.name.localeCompare(b.entry.name))
+  let rank = 0
+  return rows.map((row, index) => {
+    if (index === 0 || row[metric] !== rows[index - 1]![metric]) rank = index + 1
+    return {
+      ...row, rank,
+      tied: rows[index - 1]?.[metric] === row[metric] || rows[index + 1]?.[metric] === row[metric],
+    }
+  })
+})
 const schoolItems = computed(() => ranked.value.reduce((sum, row) => sum + row.items, 0))
 const schoolLunches = computed(() => ranked.value.reduce((sum, row) => sum + row.lunches, 0))
 const schoolWeeklyItems = computed(() => (dashboard.value?.classes || []).reduce((sum, entry) => sum + (entry.weeks[currentWeek()]?.items || 0), 0))
@@ -709,8 +722,9 @@ function changeCount(current: string, amount: number) {
             </div><div v-else class="empty-state"><span><UsersRound :size="28" /></span><h3>Start with a class</h3><p>Create your first class to begin logging plastic-free days.</p><button class="primary-button" @click="showCreate = true"><Plus :size="17" /> Create class</button></div>
           </section>
 
-          <section id="leaderboard" class="surface leaderboard"><div class="section-heading"><div><div class="section-kicker">FRIENDLY COMPETITION</div><h2>Leaderboard</h2><p>Top classes by plastic items saved.</p></div><span class="heading-icon yellow"><Trophy :size="21" /></span></div>
-            <div v-if="ranked.length" class="leader-list"><button v-for="(row, index) in ranked" :key="row.entry.name" class="leader-row" :class="{ 'leader-selected': row.entry.name === selectedName }" @click="selectedName = row.entry.name; scrollTo('check-in')"><span class="leader-rank" :class="`rank-${index + 1}`"><Medal v-if="index < 3" :size="19" /><template v-else>{{ String(index + 1).padStart(2, '0') }}</template></span><span class="leader-avatar">{{ row.entry.name[0] }}</span><span class="leader-name"><strong>Class {{ row.entry.name }}</strong><small>Level {{ levelFor(row.xp) + 1 }} · {{ levels[levelFor(row.xp)]?.name }}</small></span><span class="leader-score"><strong>{{ row.items }}</strong><small>items saved</small></span></button></div><div v-else class="empty-state compact"><span><Trophy :size="28" /></span><h3>The leaderboard starts here</h3><p>Log a class week to take the first spot.</p></div>
+          <section id="leaderboard" class="surface leaderboard"><div class="section-heading"><div><div class="section-kicker">FRIENDLY COMPETITION</div><h2>Leaderboard</h2><p>Top classes by {{ leaderboardMode === 'items' ? 'plastic items saved' : 'XP earned' }}.</p></div><span class="heading-icon yellow"><Trophy :size="21" /></span></div>
+            <div class="leaderboard-tabs" role="group" aria-label="Leaderboard metric"><button type="button" :aria-pressed="leaderboardMode === 'items'" :class="{ active: leaderboardMode === 'items' }" @click="leaderboardMode = 'items'"><PackageCheck :size="15" /> Items saved</button><button type="button" :aria-pressed="leaderboardMode === 'xp'" :class="{ active: leaderboardMode === 'xp' }" @click="leaderboardMode = 'xp'"><Sparkles :size="15" /> XP earned</button></div>
+            <div v-if="leaderboardRows.length" class="leader-list"><button v-for="row in leaderboardRows" :key="row.entry.name" class="leader-row" :class="{ 'leader-selected': row.entry.name === selectedName }" @click="selectedName = row.entry.name; scrollTo('check-in')"><span class="leader-rank" :class="`rank-${row.rank}`"><Medal v-if="row.rank <= 3" :size="17" /><span>{{ row.tied ? '=' : '' }}{{ row.rank }}</span></span><span class="leader-avatar">{{ row.entry.name[0] }}</span><span class="leader-name"><strong>Class {{ row.entry.name }}</strong><small>Level {{ levelFor(row.xp) + 1 }} · {{ levels[levelFor(row.xp)]?.name }}</small><em v-if="row.tied" class="leader-tie">Tied for #{{ row.rank }}</em></span><span class="leader-score"><strong>{{ (leaderboardMode === 'items' ? row.items : row.xp).toLocaleString() }}</strong><small>{{ leaderboardMode === 'items' ? 'items saved' : 'XP earned' }}</small></span></button></div><div v-else class="empty-state compact"><span><Trophy :size="28" /></span><h3>The leaderboard starts here</h3><p>Log a class week to take the first spot.</p></div>
           </section>
         </div>
 

@@ -42,6 +42,14 @@ async function postClass(name, password) {
   return cookie
 }
 
+async function putWeek(name, cookie, week, lunches, items) {
+  const response = await fetch(`${origin}/api/classes/${name}/weeks/${week}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: cookie },
+    body: JSON.stringify({ lunches, items }),
+  })
+  assert.equal(response.status, 200)
+}
+
 async function waitForTotal(page, value) {
   await page.waitForFunction(expected => document.querySelector('.hero-number strong')?.textContent === expected, value)
 }
@@ -91,6 +99,31 @@ try {
   assert.equal(await page.locator('.stepper').count(), 0)
   assert.match(await page.locator('.locked-state').innerText(), /Sign in to edit Class 6AB/)
   await page.screenshot({ path: join(screenshots, 'desktop.png'), fullPage: true })
+
+  await putWeek('5B', seedCookies.get('5B'), week, 31, 54)
+  await page.reload()
+  await waitForTotal(page, '137')
+  const leaders = page.locator('#leaderboard .leader-row')
+  assert.match(await leaders.nth(0).innerText(), /Class 5B[\s\S]*Tied for #1/)
+  assert.match(await leaders.nth(1).innerText(), /Class 6AB[\s\S]*Tied for #1/)
+  assert.equal(await leaders.nth(0).locator('.leader-rank').innerText(), '=1')
+  assert.equal(await leaders.nth(1).locator('.leader-rank').innerText(), '=1')
+  assert.equal(await leaders.nth(2).locator('.leader-rank').innerText(), '3')
+  await page.locator('#leaderboard').getByRole('button', { name: 'XP earned' }).click()
+  assert.match(await leaders.nth(0).innerText(), /Class 6AB[\s\S]*240[\s\S]*XP earned/)
+  assert.match(await leaders.nth(1).innerText(), /Class 5B[\s\S]*224[\s\S]*XP earned/)
+  assert.equal(await leaders.nth(1).locator('.leader-rank').innerText(), '2')
+  await putWeek('5B', seedCookies.get('5B'), week, 39, 54)
+  await page.reload()
+  await page.locator('#leaderboard').getByRole('button', { name: 'XP earned' }).click()
+  assert.equal(await leaders.nth(0).locator('.leader-rank').innerText(), '=1')
+  assert.equal(await leaders.nth(1).locator('.leader-rank').innerText(), '=1')
+  assert.match(await leaders.nth(0).innerText(), /Tied for #1/)
+  assert.match(await leaders.nth(1).innerText(), /Tied for #1/)
+  await page.screenshot({ path: join(screenshots, 'leaderboard-tie-desktop.png'), fullPage: true })
+  await putWeek('5B', seedCookies.get('5B'), week, 31, 43)
+  await page.reload()
+  await waitForTotal(page, '126')
 
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 })
   mobile.on('pageerror', error => errors.push(error.message))
