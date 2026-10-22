@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, type Component } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
 import { weeklyStreak } from '~~/shared/utils/weekly-streak'
 import {
   ArrowRight, ArrowUpRight, Award, CalendarDays, Check, ChevronDown,
@@ -17,6 +17,7 @@ type BadgeMetric = 'weeks' | 'lunches' | 'items' | 'xp' | 'level'
 type BadgeDefinition = { id: string; name: string; description: string; icon: string; metric: BadgeMetric; threshold: number }
 type Dashboard = { goal: number; settings: SchoolSettings; levels: LevelDefinition[]; badges: BadgeDefinition[]; weekLabels: Record<string, string>; classes: ClassEntry[] }
 type Celebration = { title: string; detail: string }
+type VersionPayload = { version: string; label: string; environment: string }
 
 const classPattern = /^[0-9][a-zA-Z]{1,3}$/
 const defaultSchoolSettings: SchoolSettings = { weekName: 'Plastic-Free Day', backgroundColor: '#f6f8f4', accentColor: '#286747', fontFamily: 'DM Sans' }
@@ -27,6 +28,8 @@ const fontStacks: Record<string, string> = {
 }
 const backgroundPresets = ['#f6f8f4', '#eaf3f6', '#f9eff2', '#f3f3eb']
 const accentPresets = ['#286747', '#1f6d85', '#a33d62', '#ba633d']
+const runtimeConfig = useRuntimeConfig()
+const appVersion = String(runtimeConfig.public.appVersion || 'local')
 const defaultLevels: LevelDefinition[] = [
   { name: 'Eco Rookie', threshold: 0 },
   { name: 'Green Scout', threshold: 120 },
@@ -175,12 +178,15 @@ const adminPasswordError = ref('')
 const toast = ref('')
 const celebration = ref<Celebration | null>(null)
 const leaderboardMode = ref<'items' | 'xp' | 'streak'>('items')
+const updateAvailable = ref(false)
+let versionTimer: number | null = null
 
 const selected = computed(() => dashboard.value?.classes.find(entry => entry.name === selectedName.value))
 const signedInName = computed(() => authSession.value?.className || null)
 const isAdmin = computed(() => !!adminSession.value?.admin)
 const canEdit = computed(() => !!selected.value && (isAdmin.value || signedInName.value === selected.value.name))
 const schoolSettings = computed(() => dashboard.value?.settings || defaultSchoolSettings)
+const appVersionShort = computed(() => appVersion === 'local' ? 'local' : appVersion.slice(0, 7))
 const themeStyle = computed(() => {
   const accent = schoolSettings.value.accentColor
   const channels = [1, 3, 5].map(index => parseInt(accent.slice(index, index + 2), 16) / 255)
@@ -194,7 +200,7 @@ const themeStyle = computed(() => {
     '--display-font': fontStacks[schoolSettings.value.fontFamily] || fontStacks['DM Sans'],
   }
 })
-useHead(() => ({ title: `St Andrew's ${schoolSettings.value.weekName}` }))
+useHead(() => ({ title: `St Andrew's ${schoolSettings.value.weekName}`, meta: [{ name: 'app-version', content: appVersion }] }))
 const existing = computed(() => selected.value?.weeks[week.value])
 watch([selected, week], () => {
   lunches.value = String(existing.value?.lunches ?? 0)
@@ -202,6 +208,35 @@ watch([selected, week], () => {
 }, { immediate: true })
 watch(toast, value => {
   if (value && import.meta.client) window.setTimeout(() => { if (toast.value === value) toast.value = '' }, 4200)
+})
+
+async function checkSiteVersion() {
+  if (!import.meta.client) return
+  try {
+    const latest = await $fetch<VersionPayload>('/api/version', { query: { t: Date.now() } })
+    updateAvailable.value = !!latest.version && latest.version !== appVersion
+  } catch {
+    // Version checks should never block tracking.
+  }
+}
+
+function handleVisibilityChange() {
+  if (document.visibilityState === 'visible') checkSiteVersion()
+}
+
+function reloadLatestVersion() {
+  if (import.meta.client) window.location.reload()
+}
+
+onMounted(() => {
+  checkSiteVersion()
+  versionTimer = window.setInterval(checkSiteVersion, 60000)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+})
+
+onBeforeUnmount(() => {
+  if (versionTimer) window.clearInterval(versionTimer)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 
 const ranked = computed(() => (dashboard.value?.classes || []).map(entry => ({
@@ -803,11 +838,12 @@ function changeCount(current: string, amount: number) {
             </div>
           </div>
         </section>
-        <footer class="footer"><span><Leaf :size="15" /> {{ schoolSettings.weekName }}</span><button v-if="!isAdmin" class="footer-admin-link" @click="showAdminLogin = true">Principal sign in</button><span v-else>Small choices add up.</span></footer>
+        <footer class="footer"><span><Leaf :size="15" /> {{ schoolSettings.weekName }}</span><div class="footer-meta"><span class="build-chip" :title="`Current site version ${appVersion}`">Build {{ appVersionShort }}</span><button v-if="!isAdmin" class="footer-admin-link" @click="showAdminLogin = true">Principal sign in</button><span v-else>Small choices add up.</span></div></footer>
       </div>
     </main>
 
-    <div v-if="toast" class="toast" role="status"><CircleCheck :size="19" />{{ toast }}<button aria-label="Dismiss" @click="toast = ''"><X :size="16" /></button></div>
+    <div v-if="updateAvailable" class="version-banner" role="status"><div><strong>New site version ready</strong><span>Refresh to see the latest tracker on this device.</span></div><button class="primary-button" type="button" @click="reloadLatestVersion">Refresh</button></div>
+    <div v-if="toast" class="toast" :class="{ 'toast-stacked': updateAvailable }" role="status"><CircleCheck :size="19" />{{ toast }}<button aria-label="Dismiss" @click="toast = ''"><X :size="16" /></button></div>
     <div v-if="showCreate" class="modal-backdrop" @mousedown.self="showCreate = false"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="create-title"><button class="modal-close" aria-label="Close" @click="showCreate = false"><X :size="20" /></button><span class="modal-icon"><UsersRound :size="25" /></span><div class="section-kicker">JOIN THE MOVEMENT</div><h2 id="create-title">Create a class</h2><p>Set a class name and a password your group can share.</p><form @submit.prevent="createClass"><label class="field-label" for="class-name">CLASS NAME</label><input id="class-name" v-model="newName" autofocus placeholder="e.g. 5B" maxlength="4" autocapitalize="characters" :aria-invalid="!!formError" @input="formError = ''"><small class="field-help">One digit followed by 1 to 3 letters.</small><label class="field-label password-label" for="new-password">CLASS PASSWORD</label><div class="password-field"><input id="new-password" v-model="newPassword" :type="showPassword ? 'text' : 'password'" minlength="10" maxlength="128" autocomplete="new-password" placeholder="At least 10 characters" @input="formError = ''"><button type="button" :aria-label="showPassword ? 'Hide password' : 'Show password'" @click="showPassword = !showPassword"><EyeOff v-if="showPassword" :size="17" /><Eye v-else :size="17" /></button></div><label class="field-label password-label" for="confirm-password">CONFIRM PASSWORD</label><input id="confirm-password" v-model="confirmPassword" :type="showPassword ? 'text' : 'password'" autocomplete="new-password" placeholder="Repeat password" @input="formError = ''"><div v-if="formError" class="form-error" role="alert">{{ formError }}</div><button class="primary-button modal-submit" type="submit" :disabled="busy"><Plus :size="18" /> {{ busy ? 'Creating...' : 'Create class' }}</button></form></div></div>
     <div v-if="showLogin && selected" class="modal-backdrop" @mousedown.self="showLogin = false"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="login-title"><button class="modal-close" aria-label="Close" @click="showLogin = false"><X :size="20" /></button><span class="modal-icon"><LockKeyhole :size="25" /></span><div class="section-kicker">CLASS ACCESS</div><h2 id="login-title">Sign in to Class {{ selected.name }}</h2><p>Use your class password to edit weekly entries.</p><form @submit.prevent="loginClass"><label class="field-label" for="login-password">PASSWORD</label><div class="password-field"><input id="login-password" v-model="loginPassword" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" autofocus @input="loginError = ''"><button type="button" :aria-label="showPassword ? 'Hide password' : 'Show password'" @click="showPassword = !showPassword"><EyeOff v-if="showPassword" :size="17" /><Eye v-else :size="17" /></button></div><div v-if="loginError" class="form-error" role="alert">{{ loginError }}</div><button class="primary-button modal-submit" type="submit" :disabled="busy"><LogIn :size="17" /> {{ busy ? 'Signing in...' : 'Sign in' }}</button></form></div></div>
     <div v-if="showClaim && selected" class="modal-backdrop" @mousedown.self="showClaim = false"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="claim-title"><button class="modal-close" aria-label="Close" @click="showClaim = false"><X :size="20" /></button><span class="modal-icon"><KeyRound :size="25" /></span><div class="section-kicker">FIRST-TIME SETUP</div><h2 id="claim-title">Claim Class {{ selected.name }}</h2><p>Set a password your class can share. The first person to claim this class will control its entries and settings.</p><form @submit.prevent="claimSelectedClass"><label class="field-label" for="claim-password">CLASS PASSWORD</label><div class="password-field"><input id="claim-password" v-model="claimPassword" :type="showPassword ? 'text' : 'password'" minlength="10" maxlength="128" autocomplete="new-password" autofocus @input="claimError = ''"><button type="button" :aria-label="showPassword ? 'Hide password' : 'Show password'" @click="showPassword = !showPassword"><EyeOff v-if="showPassword" :size="17" /><Eye v-else :size="17" /></button></div><label class="field-label password-label" for="confirm-claim-password">CONFIRM PASSWORD</label><input id="confirm-claim-password" v-model="confirmClaimPassword" :type="showPassword ? 'text' : 'password'" autocomplete="new-password" @input="claimError = ''"><div v-if="claimError" class="form-error" role="alert">{{ claimError }}</div><button class="primary-button modal-submit" type="submit" :disabled="busy || !selected.claimable"><KeyRound :size="17" /> {{ busy ? 'Claiming...' : 'Claim class' }}</button></form></div></div>

@@ -230,3 +230,14 @@
 .brand:hover .brand-accent{text-decoration:underline;text-underline-offset:3px}
 @media(max-width:1100px){.leader-tab-full{display:none}.leader-tab-short{display:inline}.leaderboard-tabs button{padding:5px 4px}}
 @media(max-width:480px){.leader-row{gap:7px}.leader-rank{width:34px;font-size:11px}.leader-rank svg{width:14px}.leader-avatar{width:30px;height:30px}.leaderboard-tabs button{font-size:10px}}
+
+/* Build/version sync */
+.footer-meta{display:flex;align-items:center;justify-content:flex-end;gap:10px;min-width:0}
+.footer .footer-meta .build-chip{display:inline-flex;align-items:center;border:1px solid #dfe8dd;background:#f7faf6;color:#738477;border-radius:999px;padding:3px 8px;font-size:9px;font-weight:800;line-height:1;white-space:nowrap;gap:0}
+.version-banner{position:fixed;left:50%;bottom:20px;z-index:22;transform:translateX(-50%);width:min(520px,calc(100vw - 28px));display:flex;align-items:center;justify-content:space-between;gap:16px;background:#173d38;color:white;border:1px solid rgba(255,255,255,.16);border-radius:8px;padding:14px 15px 14px 17px;box-shadow:0 18px 50px rgba(20,45,30,.25)}
+.version-banner div{display:flex;flex-direction:column;gap:3px;min-width:0}
+.version-banner strong{font-family:var(--display-font);font-size:14px}
+.version-banner span{color:#c7dbd0;font-size:11px;line-height:1.35}
+.version-banner .primary-button{min-height:35px;flex:none;background:#d8ee81;color:#173d38;box-shadow:none}
+.toast-stacked{bottom:96px}
+@media(max-width:480px){.footer{align-items:flex-start;gap:12px}.footer-meta{flex-direction:column;align-items:flex-end;gap:6px}.version-banner{align-items:stretch;flex-direction:column;bottom:14px;padding:14px}.version-banner .primary-button{width:100%}.toast-stacked{bottom:148px}}
