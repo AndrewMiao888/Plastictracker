@@ -3,8 +3,7 @@ Add-Type -AssemblyName System.Drawing
 $root = Split-Path -Parent $PSScriptRoot
 [xml]$logo = Get-Content -Raw -LiteralPath (Join-Path $root 'public/favicon.svg')
 $background = [System.Drawing.ColorTranslator]::FromHtml($logo.svg.rect.fill)
-$leaf = [System.Drawing.ColorTranslator]::FromHtml($logo.svg.path[0].fill)
-$stem = [System.Drawing.ColorTranslator]::FromHtml($logo.svg.path[1].stroke)
+$mark = [System.Drawing.ColorTranslator]::FromHtml($logo.svg.g.stroke)
 $images = New-Object System.Collections.Generic.List[object]
 
 function New-FaviconBitmap {
@@ -25,23 +24,26 @@ function New-FaviconBitmap {
   $backgroundBrush = [System.Drawing.SolidBrush]::new($background)
   $graphics.FillPath($backgroundBrush, $rectangle)
 
+  $markPen = [System.Drawing.Pen]::new($mark, 5.2)
+  $markPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+  $markPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+  $markPen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+
   $leafPath = [System.Drawing.Drawing2D.GraphicsPath]::new()
   $leafPath.StartFigure()
-  $leafPath.AddBezier(49, 13, 31, 13, 17, 20, 15, 35)
-  $leafPath.AddBezier(15, 35, 14, 44, 19, 50, 28, 50)
-  $leafPath.AddBezier(28, 50, 43, 50, 49, 32, 49, 13)
-  $leafPath.CloseFigure()
-  $leafBrush = [System.Drawing.SolidBrush]::new($leaf)
-  $graphics.FillPath($leafBrush, $leafPath)
+  $leafPath.AddBezier(30, 48, 42, 48, 50, 39, 50, 28)
+  $leafPath.AddBezier(50, 28, 50, 22.8, 48.7, 17.8, 47.92, 13.438)
+  $leafPath.AddBezier(47.92, 13.438, 47.64, 11.9, 45.64, 11.46, 44.41, 12.788)
+  $leafPath.AddBezier(44.41, 12.788, 39.666, 19, 34, 19, 27.6, 20.2)
+  $leafPath.AddBezier(27.6, 20.2, 20, 21.6, 14.6, 28.6, 16.2, 36.6)
+  $leafPath.AddBezier(16.2, 36.6, 17.6, 43.2, 22.6, 48, 30, 48)
+  $graphics.DrawPath($markPen, $leafPath)
 
-  $stemPen = [System.Drawing.Pen]::new($stem, 4)
-  $stemPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
-  $stemPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-  $graphics.DrawBezier($stemPen, 16, 49, 24, 39, 32, 33, 43, 26)
+  $graphics.DrawBezier($markPen, 12, 50, 12, 46.2, 14.16, 42.6, 17.822, 40.912)
+  $graphics.DrawBezier($markPen, 17.822, 40.912, 23.226, 38.424, 24.702, 38.48, 30, 34)
 
   $graphics.Dispose()
-  $stemPen.Dispose()
-  $leafBrush.Dispose()
+  $markPen.Dispose()
   $leafPath.Dispose()
   $backgroundBrush.Dispose()
   $rectangle.Dispose()
