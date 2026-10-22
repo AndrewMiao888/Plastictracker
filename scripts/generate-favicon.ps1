@@ -5,7 +5,6 @@ $root = Split-Path -Parent $PSScriptRoot
 $background = [System.Drawing.ColorTranslator]::FromHtml($logo.svg.rect.fill)
 $leaf = [System.Drawing.ColorTranslator]::FromHtml($logo.svg.path[0].fill)
 $stem = [System.Drawing.ColorTranslator]::FromHtml($logo.svg.path[1].stroke)
-$dot = [System.Drawing.ColorTranslator]::FromHtml($logo.svg.circle.fill)
 $images = New-Object System.Collections.Generic.List[object]
 
 foreach ($size in @(16, 32, 48, 64, 128, 256)) {
@@ -36,14 +35,10 @@ foreach ($size in @(16, 32, 48, 64, 128, 256)) {
   $stemPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
   $stemPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
   $graphics.DrawBezier($stemPen, 16, 49, 24, 39, 32, 33, 43, 26)
-  $dotBrush = [System.Drawing.SolidBrush]::new($dot)
-  $graphics.FillEllipse($dotBrush, 44, 43, 10, 10)
-
   $stream = [System.IO.MemoryStream]::new()
   $bitmap.Save($stream, [System.Drawing.Imaging.ImageFormat]::Png)
   $images.Add([pscustomobject]@{ Size = $size; Bytes = $stream.ToArray() })
   $stream.Dispose()
-  $dotBrush.Dispose()
   $stemPen.Dispose()
   $leafBrush.Dispose()
   $leafPath.Dispose()
