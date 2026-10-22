@@ -33,7 +33,7 @@ export default defineNuxtConfig({
   },
   app: {
     head: {
-      title: "St Andrew's Plastic-Free Day",
+      title: "St Andrew's EcoLunch League",
       link: [
         { rel: 'icon', type: 'image/png', sizes: '180x180', href: `/st-andrews-plastic-free-icon.png?v=${assetVersion}` },
         { rel: 'icon', type: 'image/png', sizes: '32x32', href: `/plastic-free-favicon-32.png?v=${assetVersion}` },
@@ -46,10 +46,10 @@ export default defineNuxtConfig({
         { rel: 'manifest', href: `/site.webmanifest?v=${assetVersion}` },
       ],
       meta: [
-        { name: 'description', content: 'Track weekly plastic-free lunches and celebrate every item saved at school.' },
+        { name: 'description', content: "Track St Andrew's weekly plastic-free lunches and celebrate every item saved." },
         { name: 'theme-color', content: '#153f38' },
-        { name: 'apple-mobile-web-app-title', content: 'Plastic Free' },
-        { name: 'application-name', content: 'Plastic Free' },
+        { name: 'apple-mobile-web-app-title', content: 'EcoLunch League' },
+        { name: 'application-name', content: "St Andrew's EcoLunch League" },
         { name: 'app-version', content: appVersion },
       ],
     },
