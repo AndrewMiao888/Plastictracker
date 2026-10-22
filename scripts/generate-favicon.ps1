@@ -7,12 +7,15 @@ $leaf = [System.Drawing.ColorTranslator]::FromHtml($logo.svg.path[0].fill)
 $stem = [System.Drawing.ColorTranslator]::FromHtml($logo.svg.path[1].stroke)
 $images = New-Object System.Collections.Generic.List[object]
 
-foreach ($size in @(16, 32, 48, 64, 128, 256)) {
-  $bitmap = [System.Drawing.Bitmap]::new($size, $size, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+function New-FaviconBitmap {
+  param([int]$Size)
+
+  $bitmap = [System.Drawing.Bitmap]::new($Size, $Size, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
   $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
   $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
   $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
-  $graphics.ScaleTransform($size / 64.0, $size / 64.0)
+  $graphics.ScaleTransform($Size / 64.0, $Size / 64.0)
+
   $rectangle = [System.Drawing.Drawing2D.GraphicsPath]::new()
   $rectangle.AddArc(0, 0, 30, 30, 180, 90)
   $rectangle.AddArc(34, 0, 30, 30, 270, 90)
@@ -35,16 +38,33 @@ foreach ($size in @(16, 32, 48, 64, 128, 256)) {
   $stemPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
   $stemPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
   $graphics.DrawBezier($stemPen, 16, 49, 24, 39, 32, 33, 43, 26)
-  $stream = [System.IO.MemoryStream]::new()
-  $bitmap.Save($stream, [System.Drawing.Imaging.ImageFormat]::Png)
-  $images.Add([pscustomobject]@{ Size = $size; Bytes = $stream.ToArray() })
-  $stream.Dispose()
+
+  $graphics.Dispose()
   $stemPen.Dispose()
   $leafBrush.Dispose()
   $leafPath.Dispose()
   $backgroundBrush.Dispose()
   $rectangle.Dispose()
-  $graphics.Dispose()
+
+  return $bitmap
+}
+
+foreach ($size in @(16, 32, 48, 64, 128, 256)) {
+  $bitmap = New-FaviconBitmap -Size $size
+  $stream = [System.IO.MemoryStream]::new()
+  $bitmap.Save($stream, [System.Drawing.Imaging.ImageFormat]::Png)
+  $images.Add([pscustomobject]@{ Size = $size; Bytes = $stream.ToArray() })
+  if ($size -eq 32) {
+    $bitmap.Save((Join-Path $root 'public/favicon-32x32.png'), [System.Drawing.Imaging.ImageFormat]::Png)
+  }
+  $stream.Dispose()
+  $bitmap.Dispose()
+}
+
+foreach ($size in @(180, 192, 512)) {
+  $bitmap = New-FaviconBitmap -Size $size
+  $fileName = if ($size -eq 180) { 'apple-touch-icon.png' } else { "icon-$($size)x$($size).png" }
+  $bitmap.Save((Join-Path $root "public/$fileName"), [System.Drawing.Imaging.ImageFormat]::Png)
   $bitmap.Dispose()
 }
 
@@ -72,4 +92,4 @@ try {
   $writer.Dispose()
   $file.Dispose()
 }
-Write-Output "Generated $target from the existing logo."
+Write-Output "Generated favicon.ico and iPad-friendly PNG icons from the existing logo."

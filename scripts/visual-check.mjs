@@ -91,8 +91,15 @@ try {
   page.on('pageerror', error => errors.push(error.message))
   await page.goto(origin)
   await waitForTotal(page, '126')
-  assert.match(await page.locator('link[rel="icon"]').getAttribute('href'), /^\/favicon\.ico\?v=/)
-  assert.equal((await page.request.get(`${origin}/favicon.ico`)).status(), 200)
+  const iconHrefs = await page.locator('link[rel="icon"]').evaluateAll(links => links.map(link => link.getAttribute('href')))
+  assert.ok(iconHrefs.some(href => /^\/favicon\.svg\?v=/.test(href || '')))
+  assert.ok(iconHrefs.some(href => /^\/favicon-32x32\.png\?v=/.test(href || '')))
+  assert.ok(iconHrefs.some(href => /^\/favicon\.ico\?v=/.test(href || '')))
+  assert.match(await page.locator('link[rel="apple-touch-icon"]').getAttribute('href'), /^\/apple-touch-icon\.png\?v=/)
+  assert.match(await page.locator('link[rel="manifest"]').getAttribute('href'), /^\/site\.webmanifest\?v=/)
+  for (const asset of ['favicon.ico', 'favicon.svg', 'favicon-32x32.png', 'apple-touch-icon.png', 'icon-192x192.png', 'icon-512x512.png', 'site.webmanifest']) {
+    assert.equal((await page.request.get(`${origin}/${asset}`)).status(), 200)
+  }
   const versionResponse = await page.request.get(`${origin}/api/version`)
   assert.equal(versionResponse.status(), 200)
   assert.ok((await versionResponse.json()).version)

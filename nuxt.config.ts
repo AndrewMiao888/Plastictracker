@@ -15,13 +15,25 @@ export default defineNuxtConfig({
   routeRules: {
     '/': { headers: { 'cache-control': 'no-store, max-age=0, must-revalidate' } },
     '/api/**': { headers: { 'cache-control': 'no-store, max-age=0, must-revalidate' } },
+    '/favicon.ico': { headers: { 'cache-control': 'no-store, max-age=0, must-revalidate' } },
+    '/favicon.svg': { headers: { 'cache-control': 'no-store, max-age=0, must-revalidate' } },
+    '/favicon-32x32.png': { headers: { 'cache-control': 'no-store, max-age=0, must-revalidate' } },
+    '/apple-touch-icon.png': { headers: { 'cache-control': 'no-store, max-age=0, must-revalidate' } },
+    '/icon-192x192.png': { headers: { 'cache-control': 'no-store, max-age=0, must-revalidate' } },
+    '/icon-512x512.png': { headers: { 'cache-control': 'no-store, max-age=0, must-revalidate' } },
+    '/site.webmanifest': { headers: { 'cache-control': 'no-store, max-age=0, must-revalidate' } },
     '/_nuxt/**': { headers: { 'cache-control': 'public, max-age=31536000, immutable' } },
   },
   app: {
     head: {
       title: "St Andrew's Plastic-Free Day",
       link: [
+        { rel: 'icon', type: 'image/svg+xml', href: `/favicon.svg?v=${assetVersion}` },
+        { rel: 'icon', type: 'image/png', sizes: '32x32', href: `/favicon-32x32.png?v=${assetVersion}` },
         { rel: 'icon', type: 'image/x-icon', href: `/favicon.ico?v=${assetVersion}` },
+        { rel: 'shortcut icon', type: 'image/x-icon', href: `/favicon.ico?v=${assetVersion}` },
+        { rel: 'apple-touch-icon', sizes: '180x180', href: `/apple-touch-icon.png?v=${assetVersion}` },
+        { rel: 'manifest', href: `/site.webmanifest?v=${assetVersion}` },
       ],
       meta: [
         { name: 'description', content: 'Track weekly plastic-free lunches and celebrate every item saved at school.' },
