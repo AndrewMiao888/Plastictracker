@@ -5,7 +5,7 @@ import {
   ChevronLeft, ChevronRight, CircleCheck, Earth, Leaf, Medal, Minus,
   PackageCheck, Plus, Recycle, Save, Sandwich, Sparkles, Sprout,
   Trash2, Trophy, UsersRound, X, LockKeyhole, LogIn, LogOut, Settings2,
-  Eye, EyeOff, ShieldCheck, KeyRound,
+  Eye, EyeOff, ShieldCheck, KeyRound, TreePine, TreeDeciduous, Trees,
 } from '@lucide/vue'
 
 type WeekEntry = { lunches: number; items: number; updatedAt: string }
@@ -80,11 +80,27 @@ function levelFor(xp: number) {
   return levels.value.reduce((index, level, nextIndex) => xp >= level.threshold ? nextIndex : index, 0)
 }
 
-function badgeEarned(entry: ClassEntry, badge: BadgeDefinition) {
+function badgeMetricValue(entry: ClassEntry, badge: BadgeDefinition) {
   const total = totals(entry)
-  const value = badge.metric === 'weeks' ? total.weeks : badge.metric === 'lunches' ? total.lunches :
+  return badge.metric === 'weeks' ? total.weeks : badge.metric === 'lunches' ? total.lunches :
     badge.metric === 'items' ? total.items : badge.metric === 'xp' ? xpFor(entry) : levelFor(xpFor(entry)) + 1
-  return value >= badge.threshold
+}
+
+function badgeEarned(entry: ClassEntry, badge: BadgeDefinition) {
+  return badgeMetricValue(entry, badge) >= badge.threshold
+}
+
+function badgeNear(entry: ClassEntry, badge: BadgeDefinition) {
+  const value = badgeMetricValue(entry, badge)
+  return value < badge.threshold && value >= Math.max(1, Math.ceil(badge.threshold * 0.8))
+}
+
+function badgeRemaining(entry: ClassEntry, badge: BadgeDefinition) {
+  const remaining = badge.threshold - badgeMetricValue(entry, badge)
+  const unit = badge.metric === 'xp' ? 'XP' : badge.metric === 'level' ? (remaining === 1 ? 'level' : 'levels') :
+    badge.metric === 'weeks' ? (remaining === 1 ? 'week' : 'weeks') :
+    badge.metric === 'lunches' ? (remaining === 1 ? 'lunch' : 'lunches') : (remaining === 1 ? 'item' : 'items')
+  return `${remaining.toLocaleString()} ${unit} to go`
 }
 
 const { data: dashboard, error: loadError, refresh } = await useFetch<Dashboard>('/api/dashboard', { key: 'dashboard' })
@@ -195,6 +211,13 @@ const schoolWeeklyItems = computed(() => (dashboard.value?.classes || []).reduce
 const weeklyActiveClasses = computed(() => (dashboard.value?.classes || []).filter(entry => entry.weeks[currentWeek()]).length)
 const goal = computed(() => dashboard.value?.goal || 1000)
 const progress = computed(() => Math.min(100, Math.round(schoolItems.value / goal.value * 100)))
+const goalStage = computed(() => {
+  if (!schoolItems.value) return { icon: Leaf, label: 'Ready to grow', name: 'seed' }
+  if (progress.value < 25) return { icon: Sprout, label: 'Taking root', name: 'sprout' }
+  if (progress.value < 60) return { icon: TreePine, label: 'Growing stronger', name: 'young-tree' }
+  if (progress.value < 100) return { icon: TreeDeciduous, label: 'Making a difference', name: 'tree' }
+  return { icon: Trees, label: 'Goal reached!', name: 'forest' }
+})
 const selectedXp = computed(() => selected.value ? xpFor(selected.value) : 0)
 const selectedLevel = computed(() => levelFor(selectedXp.value))
 const nextLevel = computed(() => levels.value[selectedLevel.value + 1])
@@ -665,9 +688,10 @@ function changeCount(current: string, amount: number) {
             <div class="hero-number"><strong>{{ schoolItems.toLocaleString() }}</strong><span>/ {{ goal.toLocaleString() }} items</span></div>
             <div class="hero-progress" role="progressbar" :aria-valuenow="Math.min(schoolItems, goal)" :aria-valuemax="goal" aria-valuemin="0" aria-label="School plastic items goal"><span :style="{ width: `${progress}%` }" /></div>
             <div class="hero-foot"><span>{{ progress }}% of school goal</span><span>{{ Math.max(0, goal - schoolItems).toLocaleString() }} to go</span></div>
-            <div class="hero-pulse"><span class="pulse-dot" /><span>THIS WEEK</span><strong>{{ schoolWeeklyItems.toLocaleString() }}</strong><span>items saved</span><i /><strong>{{ weeklyActiveClasses }}</strong><span>classes checked in</span></div>
+            <div v-if="!schoolItems" class="hero-empty"><Sandwich :size="19" /><span>Your sustainable journey starts here. Every class check-in helps this school goal grow.</span></div>
+            <div class="hero-pulse"><span class="pulse-dot" /><span>THIS WEEK</span><span class="pulse-metric" :aria-label="`${schoolWeeklyItems.toLocaleString()} items saved`"><strong>{{ schoolWeeklyItems.toLocaleString() }}</strong><span>items saved</span></span><i /><span class="pulse-metric" :aria-label="`${weeklyActiveClasses} classes checked in`"><strong>{{ weeklyActiveClasses }}</strong><span>classes checked in</span></span></div>
           </div>
-          <div class="hero-visual"><div class="hero-ring" :style="{ '--progress': `${progress}%` }"><div class="hero-ring-inner"><Earth :size="93" :stroke-width="1.25" /><span class="ring-leaf"><Leaf :size="29" fill="currentColor" /></span></div></div><span class="visual-spark spark-one">✦</span><span class="visual-spark spark-two">✳</span><span class="visual-spark spark-three">✦</span></div>
+          <div class="hero-visual" :data-stage="goalStage.name" :aria-label="`School goal: ${goalStage.label}`"><div class="hero-ring" :style="{ '--progress': `${progress}%` }"><div class="hero-ring-inner"><component :is="goalStage.icon" :key="goalStage.name" class="goal-stage-icon" :size="90" :stroke-width="1.4" /><span class="ring-leaf"><Leaf :size="29" fill="currentColor" /></span></div></div><span class="goal-stage-label">{{ goalStage.label }}</span><span class="visual-spark spark-one">✦</span><span class="visual-spark spark-two">✳</span><span class="visual-spark spark-three">✦</span></div>
         </section>
 
         <section class="stats-grid" aria-label="School statistics"><div v-for="metric in metricRows" :key="metric.label" class="metric surface"><span class="metric-icon" :class="metric.tone"><component :is="metric.icon" :size="23" /></span><div><span class="metric-label">{{ metric.label }}</span><strong>{{ metric.value }}</strong><span class="metric-detail"><ArrowUpRight :size="14" /> {{ metric.detail }}</span></div></div></section>
@@ -690,12 +714,12 @@ function changeCount(current: string, amount: number) {
           </section>
         </div>
 
-        <section id="achievements" class="journey-section"><div class="section-title-row"><div><div class="section-kicker">KEEP GROWING</div><h2>{{ selected ? `Class ${selected.name}'s journey` : 'Class journey' }}</h2></div><span class="xp-explainer"><Sparkles :size="15" /> 2 XP per lunch · 3 XP per item</span></div>
-          <div class="journey-grid"><div class="surface level-card"><div class="level-top"><span class="level-emblem"><Leaf :size="34" /></span><span class="level-number">LEVEL {{ selectedLevel + 1 }} OF {{ levels.length }}</span></div><h3>{{ selected ? levels[selectedLevel]?.name : levels[0]?.name }}</h3><p>{{ selected ? `${selectedXp} XP earned so far${selected.bonusXp ? `, including ${selected.bonusXp} bonus XP` : ''}` : 'Choose a class to begin the journey' }}</p><div class="level-track"><span :style="{ width: `${selected ? levelProgress : 0}%` }" /></div><div class="level-track-label"><span>{{ selectedXp }} XP</span><span>{{ nextLevel ? `${nextLevel.threshold} XP to Level ${selectedLevel + 2}` : 'Highest level reached' }}</span></div><div class="level-pips"><span v-for="(level, index) in levels" :key="level.name" :class="{ reached: index <= selectedLevel && selected }" :title="`Level ${index + 1}: ${level.name}`"><Check v-if="index < selectedLevel && selected" :size="13" /><template v-else>{{ index + 1 }}</template></span></div></div>
-            <div class="surface badges-card"><div class="badges-heading"><h3>Achievement badges</h3><span>{{ selected ? badges.filter(badge => badgeEarned(selected!, badge)).length : 0 }} / {{ badges.length }} unlocked</span></div><div class="badge-grid"><div v-for="badge in badges" :key="badge.id" class="badge" :class="selected && badgeEarned(selected, badge) ? 'earned' : 'locked'" :title="badge.description"><span class="badge-icon"><component :is="badgeIcons[badge.icon] || Award" :size="22" :stroke-width="1.8" /></span><strong>{{ badge.name }}</strong><small>{{ badge.description }}</small></div></div></div></div>
+        <section id="achievements" class="journey-section"><div class="section-title-row"><div><div class="section-kicker">KEEP GROWING</div><h2>{{ selected ? `Class ${selected.name}'s journey` : 'Class journey' }}</h2></div></div>
+          <div class="journey-grid"><div class="surface level-card"><div class="level-top"><span class="level-emblem"><Leaf :size="34" /></span><span class="level-number">LEVEL {{ selectedLevel + 1 }} OF {{ levels.length }}</span></div><h3>{{ selected ? levels[selectedLevel]?.name : levels[0]?.name }}</h3><p>{{ selected ? `${selectedXp} XP earned so far${selected.bonusXp ? `, including ${selected.bonusXp} bonus XP` : ''}` : 'Choose a class to begin the journey' }}</p><div class="xp-explainer" title="Each plastic-free lunch earns 2 XP and each plastic item saved earns 3 XP. Principal bonus XP counts toward levels too."><Sparkles :size="15" /><span>2 XP per lunch <b>·</b> 3 XP per item</span></div><div class="level-track"><span :style="{ width: `${selected ? levelProgress : 0}%` }" /></div><div class="level-track-label"><span>{{ selectedXp }} XP</span><span>{{ nextLevel ? `${nextLevel.threshold} XP to Level ${selectedLevel + 2}` : 'Highest level reached' }}</span></div><div class="level-pips"><span v-for="(level, index) in levels" :key="level.name" :class="{ reached: index <= selectedLevel && selected }" :title="`Level ${index + 1}: ${level.name}`"><Check v-if="index < selectedLevel && selected" :size="13" /><template v-else>{{ index + 1 }}</template></span></div></div>
+            <div class="surface badges-card"><div class="badges-heading"><h3>Achievement badges</h3><span>{{ selected ? badges.filter(badge => badgeEarned(selected!, badge)).length : 0 }} / {{ badges.length }} unlocked</span></div><div class="badge-grid"><div v-for="badge in badges" :key="badge.id" class="badge" :class="{ earned: selected && badgeEarned(selected, badge), near: selected && badgeNear(selected, badge), locked: !selected || !badgeEarned(selected, badge) }" :title="badge.description" :aria-label="`${badge.name} - ${badge.description}`"><span class="badge-icon"><component :is="badgeIcons[badge.icon] || Award" :size="22" :stroke-width="1.8" /></span><strong>{{ badge.name }}</strong><small>{{ badge.description }}</small><em v-if="selected && badgeNear(selected, badge)" class="badge-near-hint">{{ badgeRemaining(selected, badge) }}</em></div></div></div></div>
         </section>
 
-        <section class="activity-section"><div class="section-title-row"><div><div class="section-kicker">LATEST UPDATES</div><h2>Recent activity</h2></div><span class="activity-count">{{ activities.length }} recent entries</span></div><div class="surface activity-table"><div class="table-head"><span>CLASS</span><span>WEEK</span><span>LUNCHES</span><span>ITEMS SAVED</span></div><template v-if="activities.length"><div v-for="activity in activities" :key="`${activity.name}-${activity.date}`" class="table-row"><span class="table-class"><span class="table-avatar">{{ activity.name[0] }}</span>Class {{ activity.name }}</span><span :title="displayWeek(activity.date)" class="activity-week">{{ displayWeek(activity.date) }}</span><span>{{ activity.lunches }}</span><span class="table-items">+{{ activity.items }} <ArrowUpRight :size="15" /></span></div></template><div v-else class="table-empty">No weeks logged yet. Your first entry will appear here.</div></div></section>
+        <section class="activity-section"><div class="section-title-row"><div><div class="section-kicker">LATEST UPDATES</div><h2>Recent activity</h2></div><span class="activity-count">{{ activities.length }} recent entries</span></div><div class="surface activity-table" :class="{ 'activity-has-rows': activities.length }"><div v-if="activities.length" class="table-head"><span>CLASS</span><span>WEEK</span><span>LUNCHES</span><span>ITEMS SAVED</span></div><template v-if="activities.length"><div v-for="activity in activities" :key="`${activity.name}-${activity.date}`" class="table-row"><span class="table-class"><span class="table-avatar">{{ activity.name[0] }}</span>Class {{ activity.name }}</span><span :title="displayWeek(activity.date)" class="activity-week"><small class="mobile-activity-label">Week</small>{{ displayWeek(activity.date) }}</span><span class="activity-lunches"><small class="mobile-activity-label">Lunches</small>{{ activity.lunches.toLocaleString() }}</span><span class="table-items"><small class="mobile-activity-label">Items saved</small>+{{ activity.items.toLocaleString() }} <ArrowUpRight :size="15" /></span></div></template><div v-else class="table-empty"><span class="table-empty-icon"><Sandwich :size="29" /><Sparkles :size="16" /></span><strong>Your sustainable journey starts here!</strong><p>Your first entry will appear as soon as a class checks in.</p></div></div></section>
         <section v-if="isAdmin" id="admin" class="admin-section">
           <div class="section-title-row"><div><div class="section-kicker">SCHOOL CONTROL</div><h2>Principal panel</h2></div><button class="admin-text-button" :disabled="busy" @click="logoutAdmin"><LogOut :size="16" /> Sign out</button></div>
           <div class="admin-grid">

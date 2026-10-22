@@ -7,7 +7,7 @@ export default defineNuxtConfig({
     head: {
       title: "St Andrew's Plastic-Free Day",
       link: [
-        { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+        { rel: 'icon', type: 'image/x-icon', href: '/favicon.ico' },
       ],
       meta: [
         { name: 'description', content: 'Track weekly plastic-free lunches and celebrate every item saved at school.' },
