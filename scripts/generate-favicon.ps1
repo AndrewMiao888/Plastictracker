@@ -56,6 +56,7 @@ foreach ($size in @(16, 32, 48, 64, 128, 256)) {
   $images.Add([pscustomobject]@{ Size = $size; Bytes = $stream.ToArray() })
   if ($size -eq 32) {
     $bitmap.Save((Join-Path $root 'public/favicon-32x32.png'), [System.Drawing.Imaging.ImageFormat]::Png)
+    $bitmap.Save((Join-Path $root 'public/plastic-free-favicon-32.png'), [System.Drawing.Imaging.ImageFormat]::Png)
   }
   $stream.Dispose()
   $bitmap.Dispose()
@@ -65,6 +66,14 @@ foreach ($size in @(180, 192, 512)) {
   $bitmap = New-FaviconBitmap -Size $size
   $fileName = if ($size -eq 180) { 'apple-touch-icon.png' } else { "icon-$($size)x$($size).png" }
   $bitmap.Save((Join-Path $root "public/$fileName"), [System.Drawing.Imaging.ImageFormat]::Png)
+  if ($size -eq 180) {
+    $bitmap.Save((Join-Path $root 'public/apple-touch-icon-precomposed.png'), [System.Drawing.Imaging.ImageFormat]::Png)
+    $bitmap.Save((Join-Path $root 'public/st-andrews-plastic-free-icon.png'), [System.Drawing.Imaging.ImageFormat]::Png)
+  } elseif ($size -eq 192) {
+    $bitmap.Save((Join-Path $root 'public/plastic-free-icon-192.png'), [System.Drawing.Imaging.ImageFormat]::Png)
+  } elseif ($size -eq 512) {
+    $bitmap.Save((Join-Path $root 'public/plastic-free-icon-512.png'), [System.Drawing.Imaging.ImageFormat]::Png)
+  }
   $bitmap.Dispose()
 }
 
@@ -92,4 +101,6 @@ try {
   $writer.Dispose()
   $file.Dispose()
 }
+[System.IO.File]::Copy($target, (Join-Path $root 'public/plastic-free-favicon.ico'), $true)
+[System.IO.File]::Copy((Join-Path $root 'public/favicon.svg'), (Join-Path $root 'public/plastic-free-favicon.svg'), $true)
 Write-Output "Generated favicon.ico and iPad-friendly PNG icons from the existing logo."

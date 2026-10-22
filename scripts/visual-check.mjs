@@ -92,12 +92,19 @@ try {
   await page.goto(origin)
   await waitForTotal(page, '126')
   const iconHrefs = await page.locator('link[rel="icon"]').evaluateAll(links => links.map(link => link.getAttribute('href')))
-  assert.ok(iconHrefs.some(href => /^\/favicon\.svg\?v=/.test(href || '')))
-  assert.ok(iconHrefs.some(href => /^\/favicon-32x32\.png\?v=/.test(href || '')))
-  assert.ok(iconHrefs.some(href => /^\/favicon\.ico\?v=/.test(href || '')))
-  assert.match(await page.locator('link[rel="apple-touch-icon"]').getAttribute('href'), /^\/apple-touch-icon\.png\?v=/)
+  assert.ok(iconHrefs.some(href => /^\/st-andrews-plastic-free-icon\.png\?v=/.test(href || '')))
+  assert.ok(iconHrefs.some(href => /^\/plastic-free-favicon\.svg\?v=/.test(href || '')))
+  assert.ok(iconHrefs.some(href => /^\/plastic-free-favicon-32\.png\?v=/.test(href || '')))
+  assert.ok(iconHrefs.some(href => /^\/plastic-free-favicon\.ico\?v=/.test(href || '')))
+  assert.match(await page.locator('link[rel="apple-touch-icon"]').getAttribute('href'), /^\/st-andrews-plastic-free-icon\.png\?v=/)
+  assert.match(await page.locator('link[rel="apple-touch-icon-precomposed"]').getAttribute('href'), /^\/apple-touch-icon-precomposed\.png\?v=/)
   assert.match(await page.locator('link[rel="manifest"]').getAttribute('href'), /^\/site\.webmanifest\?v=/)
-  for (const asset of ['favicon.ico', 'favicon.svg', 'favicon-32x32.png', 'apple-touch-icon.png', 'icon-192x192.png', 'icon-512x512.png', 'site.webmanifest']) {
+  for (const asset of [
+    'favicon.ico', 'favicon.svg', 'favicon-32x32.png', 'apple-touch-icon.png', 'icon-192x192.png', 'icon-512x512.png',
+    'plastic-free-favicon.ico', 'plastic-free-favicon.svg', 'plastic-free-favicon-32.png',
+    'apple-touch-icon-precomposed.png', 'st-andrews-plastic-free-icon.png',
+    'plastic-free-icon-192.png', 'plastic-free-icon-512.png', 'site.webmanifest',
+  ]) {
     assert.equal((await page.request.get(`${origin}/${asset}`)).status(), 200)
   }
   const versionResponse = await page.request.get(`${origin}/api/version`)
