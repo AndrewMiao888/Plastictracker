@@ -267,6 +267,8 @@ try {
   await page.locator('.save-button').click()
   await waitForTotal(page, '150')
   await page.getByRole('button', { name: 'See achievements' }).click()
+  await page.getByRole('button', { name: 'Go to overview' }).click()
+  await page.waitForFunction(() => window.scrollY < 20)
 
   await page.getByRole('button', { name: 'Manage' }).click()
   await page.locator('#current-password').fill(newPassword)

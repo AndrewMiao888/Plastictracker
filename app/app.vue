@@ -678,7 +678,7 @@ function changeCount(current: string, amount: number) {
   <div v-else-if="!dashboard" class="load-screen"><span class="loading-leaf"><Leaf :size="40" /></span><p>Loading your school...</p></div>
   <div v-else class="app-shell" :style="themeStyle">
     <aside class="sidebar">
-      <div class="brand"><span class="brand-mark"><Leaf :size="25" :stroke-width="2.6" /></span><span>plastic<span class="brand-accent">free.</span><small>SCHOOL TRACKER</small></span></div>
+      <button class="brand" type="button" aria-label="Go to overview" title="Go to overview" @click="scrollTo('overview')"><span class="brand-mark"><Leaf :size="25" :stroke-width="2.6" /></span><span>plastic<span class="brand-accent">free.</span><small>SCHOOL TRACKER</small></span></button>
       <button v-if="isAdmin" class="mobile-sample-button" @click="scrollTo('admin')"><ShieldCheck :size="15" /> Principal</button><button v-else-if="signedInName" class="mobile-sample-button" @click="selectedName = signedInName; scrollTo('check-in')"><ShieldCheck :size="15" /> Class {{ signedInName }}</button><button v-else class="mobile-sample-button" @click="showAdminLogin = true"><KeyRound :size="15" /> Principal</button>
       <div class="side-group"><div class="side-label">WORKSPACE</div>
         <button class="side-link active" @click="scrollTo('overview')"><span class="side-icon"><Earth :size="18" /></span>Overview</button>
