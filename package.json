@@ -13,8 +13,9 @@
     "test:visual": "node scripts/visual-check.mjs"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.2.0",
     "@lucide/vue": "^1.60.0",
+    "@neondatabase/serverless": "^1.2.0",
+    "jspdf": "^4.2.1",
     "nuxt": "^4.6.2",
     "vue": "latest",
     "vue-router": "latest"

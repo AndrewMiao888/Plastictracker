@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { CLASS_NAME_PATTERN, DEFAULT_BADGES, DEFAULT_LEVELS, DEFAULT_SCHOOL_SETTINGS, starterData, validBadgeDefinitions,
+import { CLASS_NAME_PATTERN, DEFAULT_BADGES, DEFAULT_LEVELS, DEFAULT_SCHOOL_SETTINGS, ecoXpFor, starterData, validAvatarStyle, validBadgeDefinitions,
   validCount, validLevelDefinitions, validSchoolSettings, validSchoolWeekDate, validWeek, validWeekLabel } from './tracker.ts'
 
 test('class names require exactly one digit followed by 1 to 3 letters', () => {
@@ -54,4 +54,13 @@ test('week labels use valid Mondays and short display names', () => {
   assert.equal(validWeekLabel('Week 1 Term 4'), true)
   assert.equal(validWeekLabel(' W1 '), false)
   assert.equal(validWeekLabel('A'), false)
+})
+
+test('Eco-avatar styles are bounded and streak rewards count toward EcoXP', () => {
+  assert.equal(validAvatarStyle('starlight'), true)
+  assert.equal(validAvatarStyle('unknown'), false)
+  const entry = starterData('2026-10-19').classes[0]!
+  assert.equal(ecoXpFor(entry), 39 * 2 + 54 * 3 + 35 * 2 + 48 * 3 + 37 * 2 + 46 * 3)
+  entry.weeks['2026-09-28'] = { lunches: 1, items: 0, updatedAt: new Date().toISOString() }
+  assert.equal(ecoXpFor(entry), 39 * 2 + 54 * 3 + 35 * 2 + 48 * 3 + 37 * 2 + 46 * 3 + 2 + 50)
 })

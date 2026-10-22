@@ -41,7 +41,7 @@ export default defineNuxtConfig({
         { rel: 'icon', type: 'image/x-icon', href: `/plastic-free-favicon.ico?v=${assetVersion}` },
         { rel: 'shortcut icon', type: 'image/x-icon', href: `/plastic-free-favicon.ico?v=${assetVersion}` },
         { rel: 'apple-touch-icon', sizes: '180x180', href: `/st-andrews-plastic-free-icon.png?v=${assetVersion}` },
-        { rel: 'apple-touch-icon-precomposed', sizes: '180x180', href: `/apple-touch-icon-precomposed.png?v=${assetVersion}` },
+        { rel: 'apple-touch-icon-precomposed' as never, sizes: '180x180', href: `/apple-touch-icon-precomposed.png?v=${assetVersion}` },
         { rel: 'mask-icon', href: `/plastic-free-favicon.svg?v=${assetVersion}`, color: '#153f38' },
         { rel: 'manifest', href: `/site.webmanifest?v=${assetVersion}` },
       ],

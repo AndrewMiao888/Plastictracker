@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { weeklyStreak } from './weekly-streak.ts'
+import { longestWeeklyStreak, streakRewardXp, weeklyStreak } from './weekly-streak.ts'
 
 const week = '2026-10-19'
 
@@ -36,4 +36,16 @@ test('streaks cross the year boundary', () => {
     '2026-12-28': { lunches: 0, items: 1 },
     '2027-01-04': { lunches: 1, items: 0 },
   }, '2027-01-04'), 2)
+})
+
+test('longest streak and EcoXP rewards survive a later break', () => {
+  const weeks = {
+    '2026-08-31': { lunches: 1, items: 0 },
+    '2026-09-07': { lunches: 1, items: 0 },
+    '2026-09-14': { lunches: 1, items: 0 },
+    '2026-09-21': { lunches: 1, items: 0 },
+    '2026-10-05': { lunches: 1, items: 0 },
+  }
+  assert.equal(longestWeeklyStreak(weeks), 4)
+  assert.equal(streakRewardXp(weeks), 50)
 })

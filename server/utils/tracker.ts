@@ -1,5 +1,9 @@
+import { streakRewardXp } from '../../shared/utils/weekly-streak.ts'
+
 export type WeekEntry = { lunches: number; items: number; updatedAt: string }
-export type ClassEntry = { name: string; sample: boolean; claimable: boolean; bonusXp: number; createdAt: string; weeks: Record<string, WeekEntry> }
+export const AVATAR_STYLES = ['classic', 'dew', 'sunshine', 'crown', 'starlight'] as const
+export type AvatarStyle = typeof AVATAR_STYLES[number]
+export type ClassEntry = { name: string; sample: boolean; claimable: boolean; bonusXp: number; avatarStyle: AvatarStyle; createdAt: string; weeks: Record<string, WeekEntry> }
 export type SchoolSettings = { weekName: string; backgroundColor: string; accentColor: string; fontFamily: string }
 export type LevelDefinition = { name: string; threshold: number }
 export type BadgeMetric = 'weeks' | 'lunches' | 'items' | 'xp' | 'level'
@@ -115,12 +119,23 @@ export function validCount(value: unknown) {
   return Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 10000
 }
 
+export function validAvatarStyle(value: unknown): value is AvatarStyle {
+  return typeof value === 'string' && AVATAR_STYLES.includes(value as AvatarStyle)
+}
+
+export function ecoXpFor(entry: ClassEntry) {
+  const totals = Object.values(entry.weeks).reduce((sum, week) => ({
+    lunches: sum.lunches + week.lunches, items: sum.items + week.items,
+  }), { lunches: 0, items: 0 })
+  return totals.lunches * 2 + totals.items * 3 + (entry.bonusXp || 0) + streakRewardXp(entry.weeks)
+}
+
 function starterClass(name: string, weeklyCounts: [number, number][], currentWeek: string): ClassEntry {
   const weeks: Record<string, WeekEntry> = {}
   weeklyCounts.forEach(([lunches, items], index) => {
     weeks[shiftWeek(currentWeek, -index)] = { lunches, items, updatedAt: new Date().toISOString() }
   })
-  return { name, sample: true, claimable: true, bonusXp: 0, createdAt: new Date().toISOString(), weeks }
+  return { name, sample: true, claimable: true, bonusXp: 0, avatarStyle: 'classic', createdAt: new Date().toISOString(), weeks }
 }
 
 export function starterData(currentWeek = weekStartFor()): Dashboard {

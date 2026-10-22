@@ -4,9 +4,10 @@ import { neon } from '@neondatabase/serverless'
 import { hashPassword } from './password'
 import { DEFAULT_BADGES, DEFAULT_LEVELS, DEFAULT_SCHOOL_SETTINGS, SCHOOL_GOAL,
   validBadgeDefinitions, validLevelDefinitions, type BadgeDefinition, type ClassEntry,
-  type Dashboard, type LevelDefinition, type SchoolSettings, type WeekEntry } from './tracker'
+  type AvatarStyle, type Dashboard, type LevelDefinition, type SchoolSettings, type WeekEntry } from './tracker'
 
-type StoredClass = Omit<ClassEntry, 'claimable'> & { passwordHash?: string | null; failedLogins?: number; lockedUntil?: string | null }
+type StoredClass = Omit<ClassEntry, 'claimable' | 'avatarStyle'> & { avatarStyle?: AvatarStyle; passwordHash?: string | null;
+  failedLogins?: number; lockedUntil?: string | null }
 type StoredDashboard = Pick<Dashboard, 'goal'> & { settings?: SchoolSettings; levels?: LevelDefinition[]; badges?: BadgeDefinition[];
   weekLabels?: Record<string, string>; classes: StoredClass[]; admin?: { hash: string; failedLogins: number; lockedUntil: string | null } }
 type Credentials = { hash: string | null; failedLogins: number; lockedUntil: string | null }
@@ -29,12 +30,14 @@ async function ensureSchema() {
       password_hash text,
       failed_logins integer NOT NULL DEFAULT 0,
       locked_until timestamptz,
-      bonus_xp integer NOT NULL DEFAULT 0 CHECK (bonus_xp BETWEEN 0 AND 1000000)
+      bonus_xp integer NOT NULL DEFAULT 0 CHECK (bonus_xp BETWEEN 0 AND 1000000),
+      avatar_style varchar(20) NOT NULL DEFAULT 'classic'
     )`
     await sql`ALTER TABLE plastic_classes ADD COLUMN IF NOT EXISTS password_hash text`
     await sql`ALTER TABLE plastic_classes ADD COLUMN IF NOT EXISTS failed_logins integer NOT NULL DEFAULT 0`
     await sql`ALTER TABLE plastic_classes ADD COLUMN IF NOT EXISTS locked_until timestamptz`
     await sql`ALTER TABLE plastic_classes ADD COLUMN IF NOT EXISTS bonus_xp integer NOT NULL DEFAULT 0`
+    await sql`ALTER TABLE plastic_classes ADD COLUMN IF NOT EXISTS avatar_style varchar(20) NOT NULL DEFAULT 'classic'`
     await sql`CREATE TABLE IF NOT EXISTS plastic_weekly_entries (
       class_name varchar(4) NOT NULL REFERENCES plastic_classes(name) ON DELETE CASCADE,
       week_start date NOT NULL,
@@ -125,16 +128,18 @@ export async function getDashboard(): Promise<Dashboard> {
       badges: validBadgeDefinitions(data.badges) ? data.badges : DEFAULT_BADGES,
       weekLabels: data.weekLabels || {}, classes: data.classes.map(entry => ({
       name: entry.name, sample: entry.sample, claimable: !entry.passwordHash, bonusXp: entry.bonusXp || 0,
+      avatarStyle: entry.avatarStyle || 'classic',
       createdAt: entry.createdAt, weeks: entry.weeks,
     })) }
   }
   await ensureSchema()
   const settingsRows = await sql`SELECT goal, week_name, background_color, accent_color, font_family, levels, badges FROM plastic_settings WHERE id = 1`
-  const classRows = await sql`SELECT name, sample, password_hash IS NULL AS claimable, bonus_xp, created_at::text AS created_at FROM plastic_classes ORDER BY name`
+  const classRows = await sql`SELECT name, sample, password_hash IS NULL AS claimable, bonus_xp, avatar_style, created_at::text AS created_at FROM plastic_classes ORDER BY name`
   const weekRows = await sql`SELECT class_name, week_start::text AS week_start, lunches, items, updated_at::text AS updated_at FROM plastic_weekly_entries`
   const weekLabelRows = await sql`SELECT week_start::text AS week_start, label FROM plastic_week_labels`
   const classes = classRows.map(row => ({
     name: String(row.name), sample: Boolean(row.sample), claimable: Boolean(row.claimable), bonusXp: Number(row.bonus_xp),
+    avatarStyle: String(row.avatar_style || 'classic') as AvatarStyle,
     createdAt: String(row.created_at), weeks: {} as Record<string, WeekEntry>,
   }))
   const byName = new Map(classes.map(entry => [entry.name, entry]))
@@ -326,7 +331,7 @@ export async function removeAllAdminSessions() {
 export async function createClass(name: string, passwordHash: string): Promise<boolean> {
   if (!sql) return updateLocal(data => {
     if (data.classes.some(entry => entry.name === name)) return false
-    data.classes.push({ name, sample: false, bonusXp: 0, createdAt: new Date().toISOString(), weeks: {}, passwordHash, failedLogins: 0, lockedUntil: null })
+    data.classes.push({ name, sample: false, bonusXp: 0, avatarStyle: 'classic', createdAt: new Date().toISOString(), weeks: {}, passwordHash, failedLogins: 0, lockedUntil: null })
     return true
   })
   await ensureSchema()
@@ -431,6 +436,18 @@ export async function setClassPassword(name: string, passwordHash: string) {
   })
   await ensureSchema()
   const rows = await sql`UPDATE plastic_classes SET password_hash = ${passwordHash}, failed_logins = 0, locked_until = NULL WHERE name = ${name} RETURNING name`
+  return rows.length > 0
+}
+
+export async function setAvatarStyle(name: string, style: AvatarStyle) {
+  if (!sql) return updateLocal(data => {
+    const entry = data.classes.find(item => item.name === name)
+    if (!entry) return false
+    entry.avatarStyle = style
+    return true
+  })
+  await ensureSchema()
+  const rows = await sql`UPDATE plastic_classes SET avatar_style = ${style} WHERE name = ${name} RETURNING name`
   return rows.length > 0
 }
 

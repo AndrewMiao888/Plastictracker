@@ -3,7 +3,7 @@ import { findSession, removeSession, storeSession } from './repository'
 import { hashSessionToken, newSessionToken } from './password'
 
 const COOKIE_NAME = 'plastic_class_session'
-const SESSION_SECONDS = 14 * 24 * 60 * 60
+const SESSION_SECONDS = 180 * 24 * 60 * 60
 
 export function requireSameOrigin(event: H3Event) {
   const fetchSite = getHeader(event, 'sec-fetch-site')

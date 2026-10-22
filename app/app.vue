@@ -1,22 +1,24 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
-import { weeklyStreak } from '~~/shared/utils/weekly-streak'
+import { longestWeeklyStreak, streakRewardXp, weeklyStreak } from '~~/shared/utils/weekly-streak'
 import {
   ArrowRight, ArrowUpRight, Award, CalendarDays, Check, ChevronDown,
   ChevronLeft, ChevronRight, CircleCheck, Earth, Leaf, Medal, Minus,
   PackageCheck, Plus, Recycle, Save, Sandwich, Sparkles, Sprout,
   Trash2, Trophy, UsersRound, X, LockKeyhole, LogIn, LogOut, Settings2,
   Eye, EyeOff, ShieldCheck, KeyRound, TreePine, TreeDeciduous, Trees, Flame,
+  ChartColumnIncreasing, Crown, Download, Droplets, Handshake, Sun,
 } from '@lucide/vue'
 
 type WeekEntry = { lunches: number; items: number; updatedAt: string }
-type ClassEntry = { name: string; sample: boolean; claimable: boolean; bonusXp: number; createdAt: string; weeks: Record<string, WeekEntry> }
+type AvatarStyle = 'classic' | 'dew' | 'sunshine' | 'crown' | 'starlight'
+type ClassEntry = { name: string; sample: boolean; claimable: boolean; bonusXp: number; avatarStyle: AvatarStyle; createdAt: string; weeks: Record<string, WeekEntry> }
 type SchoolSettings = { weekName: string; backgroundColor: string; accentColor: string; fontFamily: string }
 type LevelDefinition = { name: string; threshold: number }
 type BadgeMetric = 'weeks' | 'lunches' | 'items' | 'xp' | 'level'
 type BadgeDefinition = { id: string; name: string; description: string; icon: string; metric: BadgeMetric; threshold: number }
 type Dashboard = { goal: number; settings: SchoolSettings; levels: LevelDefinition[]; badges: BadgeDefinition[]; weekLabels: Record<string, string>; classes: ClassEntry[] }
-type Celebration = { title: string; detail: string }
+type Celebration = { title: string; detail: string; badgeId?: string }
 type VersionPayload = { version: string; label: string; environment: string }
 
 const classPattern = /^[0-9][a-zA-Z]{1,3}$/
@@ -37,10 +39,27 @@ const defaultLevels: LevelDefinition[] = [
   { name: 'Earth Guardian', threshold: 550 },
   { name: 'Planet Saver', threshold: 900 },
 ]
+const avatarStyles: { id: AvatarStyle; name: string; detail: string; unlockLevel: number; icon: Component }[] = [
+  { id: 'classic', name: 'Forest', detail: 'The original Eco-avatar', unlockLevel: 0, icon: Leaf },
+  { id: 'dew', name: 'Dew Drop', detail: 'Fresh morning water', unlockLevel: 1, icon: Droplets },
+  { id: 'sunshine', name: 'Sunshine', detail: 'A bright golden glow', unlockLevel: 2, icon: Sun },
+  { id: 'crown', name: 'Leaf Crown', detail: 'A champion canopy', unlockLevel: 3, icon: Crown },
+  { id: 'starlight', name: 'Starlight', detail: 'Planet Saver sparkle', unlockLevel: 4, icon: Sparkles },
+]
+const weeklyTips = [
+  'Swap cling wrap for a reusable container or beeswax wrap.',
+  'Pack fruit whole instead of buying a single-use snack pouch.',
+  'Bring a refillable bottle and skip disposable drink bottles.',
+  'Choose loose snacks from a larger pack and use a reusable tub.',
+  'Keep a reusable spoon or fork ready in your lunch bag.',
+  'Try one package-free lunchbox compartment this week.',
+  'Wash and reuse a sturdy zip bag before replacing it.',
+  'Pick a cloth napkin that can return home with the lunchbox.',
+]
 const badgeIcons: Record<string, Component> = { Sprout, Sandwich, PackageCheck, Medal, CalendarDays, Earth, Trophy, Leaf, Recycle, Sparkles, Award }
 const badgeMetricOptions: { value: BadgeMetric; label: string }[] = [
   { value: 'weeks', label: 'Weeks logged' }, { value: 'lunches', label: 'Plastic-free lunches' },
-  { value: 'items', label: 'Plastic items saved' }, { value: 'xp', label: 'XP earned' }, { value: 'level', label: 'Level reached' },
+  { value: 'items', label: 'Plastic items saved' }, { value: 'xp', label: 'EcoXP earned' }, { value: 'level', label: 'Level reached' },
 ]
 
 function currentWeek() {
@@ -77,7 +96,7 @@ function totals(entry: ClassEntry) {
 
 function xpFor(entry: ClassEntry) {
   const total = totals(entry)
-  return total.lunches * 2 + total.items * 3 + (entry.bonusXp || 0)
+  return total.lunches * 2 + total.items * 3 + (entry.bonusXp || 0) + streakRewardXp(entry.weeks)
 }
 
 function levelFor(xp: number) {
@@ -110,6 +129,7 @@ function badgeRemaining(entry: ClassEntry, badge: BadgeDefinition) {
 const { data: dashboard, error: loadError, refresh } = await useFetch<Dashboard>('/api/dashboard', { key: 'dashboard' })
 const levels = computed(() => dashboard.value?.levels || defaultLevels)
 const badges = computed(() => dashboard.value?.badges || [])
+const celebrationBadge = computed(() => badges.value.find(badge => badge.id === celebration.value?.badgeId))
 const { data: authSession, refresh: refreshAuth } = await useFetch<{ className: string | null }>('/api/auth/session', { key: 'auth-session' })
 const { data: adminSession, refresh: refreshAdmin } = await useFetch<{ admin: boolean }>('/api/admin/session', { key: 'admin-session' })
 const selectedName = ref(authSession.value?.className || dashboard.value?.classes[0]?.name || '')
@@ -177,6 +197,7 @@ const confirmAdminPassword = ref('')
 const adminPasswordError = ref('')
 const toast = ref('')
 const celebration = ref<Celebration | null>(null)
+const certificateBusy = ref('')
 const leaderboardMode = ref<'items' | 'xp' | 'streak'>('items')
 const updateAvailable = ref(false)
 let versionTimer: number | null = null
@@ -258,8 +279,41 @@ const schoolItems = computed(() => ranked.value.reduce((sum, row) => sum + row.i
 const schoolLunches = computed(() => ranked.value.reduce((sum, row) => sum + row.lunches, 0))
 const schoolWeeklyItems = computed(() => (dashboard.value?.classes || []).reduce((sum, entry) => sum + (entry.weeks[currentWeek()]?.items || 0), 0))
 const weeklyActiveClasses = computed(() => (dashboard.value?.classes || []).filter(entry => entry.weeks[currentWeek()]).length)
+const tipOfTheWeek = computed(() => {
+  const weekNumber = Math.floor(new Date(`${currentWeek()}T00:00:00Z`).getTime() / 604_800_000)
+  return weeklyTips[Math.abs(weekNumber) % weeklyTips.length]!
+})
+const weeklyChart = computed(() => {
+  const rows = Array.from({ length: 8 }, (_, index) => shiftWeek(currentWeek(), index - 7)).map(date => ({
+    date,
+    label: weekLabel(date),
+    value: (dashboard.value?.classes || []).reduce((sum, entry) => sum + (entry.weeks[date]?.items || 0), 0),
+  }))
+  const maximum = Math.max(1, ...rows.map(row => row.value))
+  return rows.map(row => ({ ...row, height: Math.max(row.value ? 10 : 3, Math.round(row.value / maximum * 100)) }))
+})
+const weeklyTrend = computed(() => {
+  const current = weeklyChart.value.at(-1)?.value || 0
+  const previous = weeklyChart.value.at(-2)?.value || 0
+  if (!previous) return current ? `${current} items starts the trend` : 'The first check-in will start the chart'
+  const change = Math.round((current - previous) / previous * 100)
+  return `${change >= 0 ? '+' : ''}${change}% from last week`
+})
 const goal = computed(() => dashboard.value?.goal || 1000)
+const currentMonthKey = computed(() => currentWeek().slice(0, 7))
+const monthlyClassItems = computed(() => (dashboard.value?.classes || []).map(entry => ({
+  name: entry.name,
+  items: Object.entries(entry.weeks).filter(([date]) => date.startsWith(currentMonthKey.value))
+    .reduce((sum, [, counts]) => sum + counts.items, 0),
+})))
+const monthlyItems = computed(() => monthlyClassItems.value.reduce((sum, entry) => sum + entry.items, 0))
+const challengeTarget = computed(() => Math.max(100, Math.ceil((goal.value / 4) / 25) * 25))
+const challengeProgress = computed(() => Math.min(100, Math.round(monthlyItems.value / challengeTarget.value * 100)))
+const challengeParticipants = computed(() => monthlyClassItems.value.filter(entry => entry.items > 0))
 const progress = computed(() => Math.min(100, Math.round(schoolItems.value / goal.value * 100)))
+const estimatedPlasticKg = computed(() => schoolItems.value * 0.015)
+const goalPlasticKg = computed(() => goal.value * 0.015)
+const bottleWeightEquivalent = computed(() => Math.round(estimatedPlasticKg.value / 0.02))
 const goalStage = computed(() => {
   if (!schoolItems.value) return { icon: Leaf, label: 'Ready to grow', name: 'seed' }
   if (progress.value < 25) return { icon: Sprout, label: 'Taking root', name: 'sprout' }
@@ -269,11 +323,18 @@ const goalStage = computed(() => {
 })
 const selectedXp = computed(() => selected.value ? xpFor(selected.value) : 0)
 const selectedStreak = computed(() => selected.value ? weeklyStreak(selected.value.weeks, currentWeek()) : 0)
+const selectedLongestStreak = computed(() => selected.value ? longestWeeklyStreak(selected.value.weeks) : 0)
+const selectedStreakReward = computed(() => selected.value ? streakRewardXp(selected.value.weeks) : 0)
+const nextStreakMilestone = computed(() => Math.floor(selectedStreak.value / 4) * 4 + 4)
+const streakMilestoneProgress = computed(() => selectedStreak.value ? Math.round((selectedStreak.value % 4) / 4 * 100) : 0)
 const selectedCheckedInThisWeek = computed(() => {
   const entry = selected.value?.weeks[currentWeek()]
   return !!entry && (entry.lunches > 0 || entry.items > 0)
 })
 const selectedLevel = computed(() => levelFor(selectedXp.value))
+const selectedAvatarIcon = computed(() => selectedLevel.value === 0 ? Sprout : selectedLevel.value === 1 ? Leaf :
+  selectedLevel.value === 2 ? TreePine : selectedLevel.value === 3 ? TreeDeciduous : Trees)
+const selectedAvatarStyle = computed(() => avatarStyles.find(style => style.id === selected.value?.avatarStyle) || avatarStyles[0]!)
 const nextLevel = computed(() => levels.value[selectedLevel.value + 1])
 const currentThreshold = computed(() => levels.value[selectedLevel.value]!.threshold)
 const levelProgress = computed(() => nextLevel.value
@@ -364,7 +425,7 @@ async function saveWeek() {
     const newLevel = levelFor(xpFor(updated))
     const earnedBadge = badges.value.find(badge => badgeEarned(updated, badge) && !oldBadges.includes(badge.id))
     if (newLevel > oldLevel) celebration.value = { title: `Level ${newLevel + 1} unlocked!`, detail: `${name} is now ${levels.value[newLevel]!.name}. Keep the momentum going!` }
-    else if (earnedBadge) celebration.value = { title: `${earnedBadge.name} unlocked!`, detail: `${name} earned a new badge. Brilliant work!` }
+    else if (earnedBadge) celebration.value = { title: `${earnedBadge.name} unlocked!`, detail: `${name} earned a new badge. Brilliant work!`, badgeId: earnedBadge.id }
     else toast.value = `${name}'s week has been saved.`
   } catch (error) { toast.value = (error as Error).message }
   finally { busy.value = false }
@@ -584,7 +645,7 @@ async function awardXp(amount = Number(xpAmount.value)) {
     const newLevel = levelFor(xpFor(updated))
     showXpAward.value = false
     if (newLevel > oldLevel) celebration.value = { title: `Level ${newLevel + 1} unlocked!`, detail: `Class ${updated.name} is now ${levels.value[newLevel]!.name}.` }
-    else toast.value = `Class ${updated.name} earned ${amount.toLocaleString()} bonus XP.`
+    else toast.value = `Class ${updated.name} earned ${amount.toLocaleString()} bonus EcoXP.`
   } catch (error) { xpError.value = (error as Error).message }
   finally { busy.value = false }
 }
@@ -706,6 +767,77 @@ async function removeClass() {
 function changeCount(current: string, amount: number) {
   return String(Math.max(0, Math.min(10000, (Number(current) || 0) + amount)))
 }
+
+async function chooseAvatar(style: typeof avatarStyles[number]) {
+  if (!selected.value || !canEdit.value || style.unlockLevel > selectedLevel.value) return
+  busy.value = true
+  try {
+    await request(`/api/classes/${selected.value.name}/avatar`, { method: 'PUT', body: { style: style.id } })
+    await reload()
+    toast.value = `${style.name} is now part of Class ${selected.value.name}'s Eco-avatar.`
+  } catch (error) { toast.value = (error as Error).message }
+  finally { busy.value = false }
+}
+
+async function downloadCertificate(badge: BadgeDefinition) {
+  if (!selected.value || !badgeEarned(selected.value, badge) || !import.meta.client) return
+  certificateBusy.value = badge.id
+  try {
+    const { jsPDF } = await import('jspdf')
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+    const className = selected.value.name
+    const awarded = new Intl.DateTimeFormat('en-AU', {
+      timeZone: 'Australia/Adelaide', day: 'numeric', month: 'long', year: 'numeric',
+    }).format(new Date())
+    doc.setFillColor(246, 248, 244)
+    doc.rect(0, 0, 297, 210, 'F')
+    doc.setDrawColor(34, 103, 71)
+    doc.setLineWidth(2)
+    doc.roundedRect(11, 11, 275, 188, 4, 4)
+    doc.setDrawColor(216, 238, 129)
+    doc.setLineWidth(0.8)
+    doc.roundedRect(16, 16, 265, 178, 3, 3)
+    doc.setFillColor(23, 61, 56)
+    doc.circle(148.5, 47, 18, 'F')
+    doc.setDrawColor(216, 238, 129)
+    doc.setLineWidth(2)
+    doc.line(142, 53, 155, 40)
+    doc.ellipse(142, 45, 6, 10)
+    doc.ellipse(155, 50, 6, 10)
+    doc.setTextColor(35, 58, 47)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(13)
+    doc.text("ST ANDREW'S ECOLUNCH LEAGUE", 148.5, 76, { align: 'center' })
+    doc.setTextColor(40, 103, 71)
+    doc.setFontSize(30)
+    doc.text('Certificate of Eco Achievement', 148.5, 94, { align: 'center' })
+    doc.setTextColor(92, 112, 100)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(13)
+    doc.text('This certificate is proudly presented to', 148.5, 110, { align: 'center' })
+    doc.setTextColor(23, 61, 56)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(27)
+    doc.text(`Class ${className}`, 148.5, 128, { align: 'center' })
+    doc.setTextColor(225, 130, 80)
+    doc.setFontSize(18)
+    doc.text(badge.name, 148.5, 143, { align: 'center' })
+    doc.setTextColor(74, 94, 82)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(12)
+    doc.text(badge.description, 148.5, 154, { align: 'center' })
+    doc.setDrawColor(190, 204, 194)
+    doc.line(63, 176, 117, 176)
+    doc.line(180, 176, 234, 176)
+    doc.setFontSize(9)
+    doc.text(awarded, 90, 182, { align: 'center' })
+    doc.text("St Andrew's Principal / Teacher", 207, 182, { align: 'center' })
+    const fileName = `Class-${className}-${badge.name.replace(/[^a-z0-9]+/gi, '-')}-certificate.pdf`
+    doc.save(fileName)
+    toast.value = `${badge.name} certificate downloaded for Class ${className}.`
+  } catch (error) { toast.value = `Certificate could not be created: ${(error as Error).message}` }
+  finally { certificateBusy.value = '' }
+}
 </script>
 
 <template>
@@ -732,7 +864,7 @@ function changeCount(current: string, amount: number) {
     <main id="overview" class="main">
       <div class="topbar"><div class="breadcrumb">School dashboard <ChevronRight :size="14" /> <strong>Overview</strong></div><div class="top-actions"><span v-if="isAdmin" class="session-label"><ShieldCheck :size="15" /> Principal access</span><span v-else-if="signedInName" class="session-label"><ShieldCheck :size="15" /> Editing Class {{ signedInName }}</span><span class="date-pill"><CalendarDays :size="15" /><span :title="displayWeek(currentWeek())">{{ displayWeek(currentWeek()) }}</span></span><span class="top-avatar"><Leaf :size="17" /></span></div></div>
       <div class="content">
-        <header class="page-heading"><div><div class="eyebrow"><span class="eyebrow-dot" /> ST ANDREW'S {{ schoolSettings.weekName.toUpperCase() }} <span v-if="hasSamples" class="sample-badge">SAMPLE DATA</span></div><h1>Small swaps. Big impact.</h1><p>Every lunch counts. See how we're doing together.</p></div><button class="primary-button heading-button" @click="showCreate = true"><Plus :size="18" /> Create class</button></header>
+        <header class="page-heading"><div><div class="eyebrow"><span class="eyebrow-dot" /> ST ANDREW'S {{ schoolSettings.weekName.toUpperCase() }} <span v-if="hasSamples" class="sample-badge">SAMPLE DATA</span></div><h1>Small swaps. Big impact.</h1><p>Every lunch counts. See how we're doing together.</p><div class="weekly-tip"><span><Recycle :size="16" /></span><div><strong>Small Swap of the Week</strong><small>{{ tipOfTheWeek }}</small></div></div></div><button class="primary-button heading-button" @click="showCreate = true"><Plus :size="18" /> Create class</button></header>
 
         <section class="hero-panel" aria-label="School goal progress">
           <div class="hero-copy">
@@ -740,8 +872,9 @@ function changeCount(current: string, amount: number) {
             <h2>Together, we're making<br>a cleaner tomorrow.</h2>
             <p>Plastic items saved by our school so far</p>
             <div class="hero-number"><strong>{{ schoolItems.toLocaleString() }}</strong><span>/ {{ goal.toLocaleString() }} items</span></div>
+            <div class="impact-equivalence" title="Estimate uses an average of 15 grams per avoided single-use item and 20 grams per empty drink bottle."><PackageCheck :size="17" /><span><strong>{{ estimatedPlasticKg < 10 ? estimatedPlasticKg.toFixed(1) : Math.round(estimatedPlasticKg) }} kg</strong> of plastic avoided <small>about the weight of {{ bottleWeightEquivalent.toLocaleString() }} empty drink bottles</small></span></div>
             <div class="hero-progress" role="progressbar" :aria-valuenow="Math.min(schoolItems, goal)" :aria-valuemax="goal" aria-valuemin="0" aria-label="School plastic items goal"><span :style="{ width: `${progress}%` }" /></div>
-            <div class="hero-foot"><span>{{ progress }}% of school goal</span><span>{{ Math.max(0, goal - schoolItems).toLocaleString() }} to go</span></div>
+            <div class="hero-foot"><span>{{ progress }}% of school goal</span><span>Goal impact: about {{ goalPlasticKg < 10 ? goalPlasticKg.toFixed(1) : Math.round(goalPlasticKg) }} kg</span></div>
             <div v-if="!schoolItems" class="hero-empty"><Sandwich :size="19" /><span>Your sustainable journey starts here. Every class check-in helps this school goal grow.</span></div>
             <div class="hero-pulse"><span class="pulse-dot" /><span>THIS WEEK</span><span class="pulse-metric" :aria-label="`${schoolWeeklyItems.toLocaleString()} items saved`"><strong>{{ schoolWeeklyItems.toLocaleString() }}</strong><span>items saved</span></span><i /><span class="pulse-metric" :aria-label="`${weeklyActiveClasses} classes checked in`"><strong>{{ weeklyActiveClasses }}</strong><span>classes checked in</span></span></div>
           </div>
@@ -750,12 +883,17 @@ function changeCount(current: string, amount: number) {
 
         <section class="stats-grid" aria-label="School statistics"><div v-for="metric in metricRows" :key="metric.label" class="metric surface"><span class="metric-icon" :class="metric.tone"><component :is="metric.icon" :size="23" /></span><div><span class="metric-label">{{ metric.label }}</span><strong>{{ metric.value }}</strong><span class="metric-detail"><ArrowUpRight :size="14" /> {{ metric.detail }}</span></div></div></section>
 
+        <section class="impact-grid" aria-label="School impact and cooperation">
+          <div class="surface trend-card"><div class="impact-card-head"><div><div class="section-kicker">8-WEEK MOMENTUM</div><h2>Plastic saved each week</h2><p>{{ weeklyTrend }}</p></div><span class="heading-icon blue"><ChartColumnIncreasing :size="21" /></span></div><div class="weekly-chart" role="img" aria-label="Bar chart of plastic items saved over the last eight weeks"><div v-for="point in weeklyChart" :key="point.date" class="chart-column" :class="{ current: point.date === currentWeek() }"><span class="chart-value">{{ point.value }}</span><div class="chart-bar-track"><span class="chart-bar" :style="{ height: `${point.height}%` }" /></div><small>{{ point.label }}</small></div></div></div>
+          <div class="surface challenge-card"><div class="impact-card-head"><div><div class="section-kicker">MONTHLY CO-OP</div><h2>One school, one mission</h2><p>Every class adds to the same shared reward.</p></div><span class="heading-icon peach"><Handshake :size="21" /></span></div><div class="challenge-score"><strong>{{ monthlyItems.toLocaleString() }}</strong><span>/ {{ challengeTarget.toLocaleString() }} items</span></div><div class="challenge-track" role="progressbar" :aria-valuenow="monthlyItems" :aria-valuemax="challengeTarget" aria-label="Monthly school cooperation challenge"><span :style="{ width: `${challengeProgress}%` }" /></div><div class="challenge-foot"><span>{{ challengeProgress }}% complete</span><span>{{ Math.max(0, challengeTarget - monthlyItems).toLocaleString() }} items to unlock the School Eco Star</span></div><div class="challenge-team"><span v-for="entry in monthlyClassItems" :key="entry.name" :class="{ active: entry.items > 0 }">{{ entry.name }} <b>{{ entry.items }}</b></span><em v-if="!challengeParticipants.length">The first class check-in starts the team challenge.</em></div></div>
+        </section>
+
         <div class="main-grid">
           <section id="check-in" class="surface checkin"><div class="section-heading"><div><div class="section-kicker">{{ schoolSettings.weekName.toUpperCase() }}</div><h2>Weekly check-in</h2><p>Record your class's progress for the week.</p></div><span class="heading-icon green"><CalendarDays :size="21" /></span></div>
             <div v-if="selected">
               <div class="form-top"><label class="field-label" for="class-select">VIEW CLASS</label><div class="select-wrap"><select id="class-select" v-model="selectedName"><option v-for="entry in dashboard.classes" :key="entry.name" :value="entry.name">Class {{ entry.name }}</option></select><ChevronDown :size="18" /></div><div class="week-picker"><span :title="displayWeek(week)"><strong>{{ displayWeek(week) }}</strong></span><div><button type="button" title="Previous week" aria-label="Previous week" @click="week = shiftWeek(week, -1)"><ChevronLeft :size="18" /></button><button type="button" title="Next week" aria-label="Next week" :disabled="week >= currentWeek()" @click="week = shiftWeek(week, 1)"><ChevronRight :size="18" /></button></div></div></div>
               <div class="class-session-bar"><span v-if="canEdit" class="class-session-state editing"><ShieldCheck :size="15" /> {{ isAdmin ? 'Principal editing' : 'Editing' }} Class {{ selected.name }}</span><span v-else class="class-session-state"><LockKeyhole :size="15" /> Public view</span><div v-if="signedInName === selected.name" class="class-session-actions"><button type="button" title="Manage class and password" @click="showManage = true"><Settings2 :size="15" /> Manage</button><button type="button" title="Sign out of class" :disabled="busy" @click="logoutClass"><LogOut :size="15" /> Sign out</button></div><div v-else-if="isAdmin" class="class-session-actions"><button type="button" @click="scrollTo('admin')"><Settings2 :size="15" /> Principal panel</button></div></div>
-              <form v-if="canEdit" @submit.prevent="saveWeek"><div class="entry-fields"><div class="counter-row"><span class="counter-icon peach"><Sandwich :size="21" /></span><span class="counter-label"><strong>Plastic-free lunches</strong><small>Lunches packed this week</small></span><div class="stepper"><button type="button" aria-label="Decrease Plastic-free lunches" @click="lunches = changeCount(lunches, -1)"><Minus :size="15" /></button><input v-model="lunches" type="number" min="0" max="10000" step="1" aria-label="Plastic-free lunches"><button type="button" aria-label="Increase Plastic-free lunches" @click="lunches = changeCount(lunches, 1)"><Plus :size="15" /></button></div></div>
+              <form v-if="canEdit" @submit.prevent="saveWeek"><div class="quick-log"><div class="quick-log-head"><span>QUICK LOG</span><small>Tap during roll call</small></div><div class="quick-log-grid"><button type="button" @click="lunches = changeCount(lunches, 1)"><Sandwich :size="20" /><strong>+1</strong><span>Lunch</span></button><button type="button" @click="lunches = changeCount(lunches, 5)"><Sandwich :size="20" /><strong>+5</strong><span>Lunches</span></button><button type="button" @click="items = changeCount(items, 1)"><PackageCheck :size="20" /><strong>+1</strong><span>Item</span></button><button type="button" @click="items = changeCount(items, 5)"><PackageCheck :size="20" /><strong>+5</strong><span>Items</span></button></div></div><div class="entry-fields"><div class="counter-row"><span class="counter-icon peach"><Sandwich :size="21" /></span><span class="counter-label"><strong>Plastic-free lunches</strong><small>Lunches packed this week</small></span><div class="stepper"><button type="button" aria-label="Decrease Plastic-free lunches" @click="lunches = changeCount(lunches, -1)"><Minus :size="15" /></button><input v-model="lunches" type="number" min="0" max="10000" step="1" aria-label="Plastic-free lunches"><button type="button" aria-label="Increase Plastic-free lunches" @click="lunches = changeCount(lunches, 1)"><Plus :size="15" /></button></div></div>
                 <div class="counter-row"><span class="counter-icon mint"><PackageCheck :size="21" /></span><span class="counter-label"><strong>Plastic items saved</strong><small>Items avoided this week</small></span><div class="stepper"><button type="button" aria-label="Decrease Plastic items saved" @click="items = changeCount(items, -1)"><Minus :size="15" /></button><input v-model="items" type="number" min="0" max="10000" step="1" aria-label="Plastic items saved"><button type="button" aria-label="Increase Plastic items saved" @click="items = changeCount(items, 1)"><Plus :size="15" /></button></div></div></div>
               <div class="form-footer"><span class="edit-hint"><CircleCheck :size="16" /> {{ existing ? "Editing this week's entry" : 'Ready for a new entry' }}</span><div class="form-actions"><button v-if="existing" class="delete-button" type="button" title="Delete this week's entry" aria-label="Delete this week's entry" :disabled="busy" @click="deleteWeek"><Trash2 :size="17" /></button><button class="primary-button save-button" :disabled="busy" type="submit"><Save :size="17" /> {{ busy ? 'Saving...' : 'Save week' }}</button></div></div>
               </form>
@@ -763,15 +901,15 @@ function changeCount(current: string, amount: number) {
             </div><div v-else class="empty-state"><span><UsersRound :size="28" /></span><h3>Start with a class</h3><p>Create your first class to begin logging plastic-free days.</p><button class="primary-button" @click="showCreate = true"><Plus :size="17" /> Create class</button></div>
           </section>
 
-          <section id="leaderboard" class="surface leaderboard"><div class="section-heading"><div><div class="section-kicker">FRIENDLY COMPETITION</div><h2>Leaderboard</h2><p>{{ leaderboardMode === 'streak' ? 'Longest active weekly streaks.' : `Top classes by ${leaderboardMode === 'items' ? 'plastic items saved' : 'XP earned'}.` }}</p></div><span class="heading-icon yellow"><Trophy :size="21" /></span></div>
-            <div class="leaderboard-tabs" role="group" aria-label="Leaderboard metric"><button type="button" :aria-pressed="leaderboardMode === 'items'" :class="{ active: leaderboardMode === 'items' }" @click="leaderboardMode = 'items'"><PackageCheck :size="15" /><span class="leader-tab-full">Items saved</span><span class="leader-tab-short">Items</span></button><button type="button" :aria-pressed="leaderboardMode === 'xp'" :class="{ active: leaderboardMode === 'xp' }" @click="leaderboardMode = 'xp'"><Sparkles :size="15" /><span class="leader-tab-full">XP earned</span><span class="leader-tab-short">XP</span></button><button type="button" :aria-pressed="leaderboardMode === 'streak'" :class="{ active: leaderboardMode === 'streak' }" @click="leaderboardMode = 'streak'"><Flame :size="15" /><span class="leader-tab-full">Streak</span><span class="leader-tab-short">Streak</span></button></div>
-            <div v-if="leaderboardRows.length" class="leader-list"><button v-for="row in leaderboardRows" :key="row.entry.name" class="leader-row" :class="{ 'leader-selected': row.entry.name === selectedName }" @click="selectedName = row.entry.name; scrollTo('check-in')"><span class="leader-rank" :class="`rank-${row.rank}`"><Medal v-if="row.rank <= 3" :size="17" /><span>{{ row.tied ? '=' : '' }}{{ row.rank }}</span></span><span class="leader-avatar">{{ row.entry.name[0] }}</span><span class="leader-name"><strong>Class {{ row.entry.name }}</strong><small>Level {{ levelFor(row.xp) + 1 }} · {{ levels[levelFor(row.xp)]?.name }}</small><em v-if="row.tied" class="leader-tie">Tied for #{{ row.rank }}</em></span><span class="leader-score"><strong>{{ (leaderboardMode === 'items' ? row.items : leaderboardMode === 'xp' ? row.xp : row.streak).toLocaleString() }}</strong><small>{{ leaderboardMode === 'items' ? 'items saved' : leaderboardMode === 'xp' ? 'XP earned' : row.streak === 1 ? 'week in a row' : 'weeks in a row' }}</small></span></button></div><div v-else class="empty-state compact"><span><Trophy :size="28" /></span><h3>The leaderboard starts here</h3><p>Log a class week to take the first spot.</p></div>
+          <section id="leaderboard" class="surface leaderboard"><div class="section-heading"><div><div class="section-kicker">FRIENDLY COMPETITION</div><h2>Leaderboard</h2><p>{{ leaderboardMode === 'streak' ? 'Longest active weekly streaks.' : `Top classes by ${leaderboardMode === 'items' ? 'plastic items saved' : 'EcoXP earned'}.` }}</p></div><span class="heading-icon yellow"><Trophy :size="21" /></span></div>
+            <div class="leaderboard-tabs" role="group" aria-label="Leaderboard metric"><button type="button" :aria-pressed="leaderboardMode === 'items'" :class="{ active: leaderboardMode === 'items' }" @click="leaderboardMode = 'items'"><PackageCheck :size="15" /><span class="leader-tab-full">Items saved</span><span class="leader-tab-short">Items</span></button><button type="button" :aria-pressed="leaderboardMode === 'xp'" :class="{ active: leaderboardMode === 'xp' }" @click="leaderboardMode = 'xp'"><Sparkles :size="15" /><span class="leader-tab-full">EcoXP earned</span><span class="leader-tab-short">EcoXP</span></button><button type="button" :aria-pressed="leaderboardMode === 'streak'" :class="{ active: leaderboardMode === 'streak' }" @click="leaderboardMode = 'streak'"><Flame :size="15" /><span class="leader-tab-full">Streak</span><span class="leader-tab-short">Streak</span></button></div>
+            <div v-if="leaderboardRows.length" class="leader-list"><button v-for="row in leaderboardRows" :key="row.entry.name" class="leader-row" :class="{ 'leader-selected': row.entry.name === selectedName }" @click="selectedName = row.entry.name; scrollTo('check-in')"><span class="leader-rank" :class="`rank-${row.rank}`"><Medal v-if="row.rank <= 3" :size="17" /><span>{{ row.tied ? '=' : '' }}{{ row.rank }}</span></span><span class="leader-avatar">{{ row.entry.name[0] }}</span><span class="leader-name"><strong>Class {{ row.entry.name }}</strong><small>Level {{ levelFor(row.xp) + 1 }} · {{ levels[levelFor(row.xp)]?.name }}</small><em v-if="row.tied" class="leader-tie">Tied for #{{ row.rank }}</em></span><span class="leader-score"><strong>{{ (leaderboardMode === 'items' ? row.items : leaderboardMode === 'xp' ? row.xp : row.streak).toLocaleString() }}</strong><small>{{ leaderboardMode === 'items' ? 'items saved' : leaderboardMode === 'xp' ? 'EcoXP earned' : row.streak === 1 ? 'week in a row' : 'weeks in a row' }}</small></span></button></div><div v-else class="empty-state compact"><span><Trophy :size="28" /></span><h3>The leaderboard starts here</h3><p>Log a class week to take the first spot.</p></div>
           </section>
         </div>
 
         <section id="achievements" class="journey-section"><div class="section-title-row"><div><div class="section-kicker">KEEP GROWING</div><h2>{{ selected ? `Class ${selected.name}'s journey` : 'Class journey' }}</h2></div></div>
-          <div class="journey-grid"><div class="surface level-card"><div class="level-top"><span class="level-emblem"><Leaf :size="34" /></span><span class="level-number">LEVEL {{ selectedLevel + 1 }} OF {{ levels.length }}</span></div><h3>{{ selected ? levels[selectedLevel]?.name : levels[0]?.name }}</h3><p>{{ selected ? `${selectedXp} XP earned so far${selected.bonusXp ? `, including ${selected.bonusXp} bonus XP` : ''}` : 'Choose a class to begin the journey' }}</p><div class="xp-explainer" title="Each plastic-free lunch earns 2 XP and each plastic item saved earns 3 XP. Principal bonus XP counts toward levels too."><Sparkles :size="15" /><span>2 XP per lunch <b>·</b> 3 XP per item</span></div><div class="streak-summary" :class="{ active: selectedStreak > 0 }"><span class="streak-icon"><Flame :size="19" /></span><span><strong>{{ selectedStreak ? `${selectedStreak}-week streak` : 'No streak yet' }}</strong><small>{{ selectedCheckedInThisWeek ? 'This week counts toward your streak.' : selectedStreak ? 'Check in this week to keep it going.' : 'Log a lunch or item to start a streak.' }}</small></span></div><div class="level-track"><span :style="{ width: `${selected ? levelProgress : 0}%` }" /></div><div class="level-track-label"><span>{{ selectedXp }} XP</span><span>{{ nextLevel ? `${nextLevel.threshold} XP to Level ${selectedLevel + 2}` : 'Highest level reached' }}</span></div><div class="level-pips"><span v-for="(level, index) in levels" :key="level.name" :class="{ reached: index <= selectedLevel && selected }" :title="`Level ${index + 1}: ${level.name}`"><Check v-if="index < selectedLevel && selected" :size="13" /><template v-else>{{ index + 1 }}</template></span></div></div>
-            <div class="surface badges-card"><div class="badges-heading"><h3>Achievement badges</h3><span>{{ selected ? badges.filter(badge => badgeEarned(selected!, badge)).length : 0 }} / {{ badges.length }} unlocked</span></div><div class="badge-grid"><div v-for="badge in badges" :key="badge.id" class="badge" :class="{ earned: selected && badgeEarned(selected, badge), near: selected && badgeNear(selected, badge), locked: !selected || !badgeEarned(selected, badge) }" :title="badge.description" :aria-label="`${badge.name} - ${badge.description}`"><span class="badge-icon"><component :is="badgeIcons[badge.icon] || Award" :size="22" :stroke-width="1.8" /></span><strong>{{ badge.name }}</strong><small>{{ badge.description }}</small><em v-if="selected && badgeNear(selected, badge)" class="badge-near-hint">{{ badgeRemaining(selected, badge) }}</em></div></div></div></div>
+          <div class="journey-grid"><div class="surface level-card"><div class="avatar-level-row"><div class="eco-avatar" :data-style="selectedAvatarStyle.id"><span class="avatar-aura" /><component :is="selectedAvatarIcon" class="avatar-tree" :size="58" :stroke-width="1.7" /><component v-if="selectedAvatarStyle.id !== 'classic'" :is="selectedAvatarStyle.icon" class="avatar-accessory" :size="20" /></div><div><span class="level-number">LEVEL {{ selectedLevel + 1 }} OF {{ levels.length }}</span><h3>{{ selected ? levels[selectedLevel]?.name : levels[0]?.name }}</h3><p>{{ selected ? `${selectedXp} EcoXP earned${selected.bonusXp ? `, including ${selected.bonusXp} principal XP` : ''}` : 'Choose a class to begin the journey' }}</p></div></div><div class="xp-explainer" title="Each plastic-free lunch earns 2 EcoXP, each plastic item saved earns 3 EcoXP, and every completed four-week streak adds 50 EcoXP."><Sparkles :size="15" /><span>2 per lunch <b>·</b> 3 per item <b>·</b> +50 per 4-week streak</span></div><div class="avatar-customizer"><div class="avatar-customizer-head"><strong>Eco-avatar elements</strong><small>{{ canEdit ? 'Choose an unlocked style' : `${selectedAvatarStyle.name} selected` }}</small></div><div class="avatar-options"><button v-for="style in avatarStyles" :key="style.id" type="button" :class="{ selected: selected?.avatarStyle === style.id, locked: style.unlockLevel > selectedLevel }" :disabled="busy || !canEdit || style.unlockLevel > selectedLevel" :title="style.unlockLevel > selectedLevel ? `Unlocks at Level ${style.unlockLevel + 1}` : style.detail" @click="chooseAvatar(style)"><component :is="style.icon" :size="17" /><span>{{ style.name }}</span><small>{{ style.unlockLevel > selectedLevel ? `L${style.unlockLevel + 1}` : 'Unlocked' }}</small></button></div></div><div class="streak-reward" :class="{ active: selectedStreak > 0 }"><span class="streak-flame"><Flame :size="25" fill="currentColor" /><b>{{ selectedStreak }}</b></span><div><strong>{{ selectedStreak ? `${selectedStreak}-week EcoXP streak` : 'Start an EcoXP streak' }}</strong><small>{{ selectedCheckedInThisWeek ? 'This week is locked in.' : selectedStreak ? 'Check in this week to keep the glow.' : 'Log a lunch or item this week.' }} {{ selectedStreakReward ? `${selectedStreakReward} reward EcoXP earned so far.` : '' }}</small><div class="streak-track"><span :style="{ width: `${streakMilestoneProgress}%` }" /></div><em>{{ selectedStreak }} / {{ nextStreakMilestone }} weeks to the next +50 EcoXP reward <template v-if="selectedLongestStreak > selectedStreak">· Best: {{ selectedLongestStreak }}</template></em></div></div><div class="level-track"><span :style="{ width: `${selected ? levelProgress : 0}%` }" /></div><div class="level-track-label"><span>{{ selectedXp }} EcoXP</span><span>{{ nextLevel ? `${nextLevel.threshold} EcoXP to Level ${selectedLevel + 2}` : 'Highest level reached' }}</span></div><div class="level-pips"><span v-for="(level, index) in levels" :key="level.name" :class="{ reached: index <= selectedLevel && selected }" :title="`Level ${index + 1}: ${level.name}`"><Check v-if="index < selectedLevel && selected" :size="13" /><template v-else>{{ index + 1 }}</template></span></div></div>
+            <div class="surface badges-card"><div class="badges-heading"><h3>Achievement badges</h3><span>{{ selected ? badges.filter(badge => badgeEarned(selected!, badge)).length : 0 }} / {{ badges.length }} unlocked</span></div><div class="badge-grid"><div v-for="badge in badges" :key="badge.id" class="badge" :class="{ earned: selected && badgeEarned(selected, badge), near: selected && badgeNear(selected, badge), locked: !selected || !badgeEarned(selected, badge) }" :title="badge.description" :aria-label="`${badge.name} - ${badge.description}`"><span class="badge-icon"><component :is="badgeIcons[badge.icon] || Award" :size="22" :stroke-width="1.8" /></span><strong>{{ badge.name }}</strong><small>{{ badge.description }}</small><em v-if="selected && badgeNear(selected, badge)" class="badge-near-hint">{{ badgeRemaining(selected, badge) }}</em><button v-if="selected && badgeEarned(selected, badge)" type="button" class="certificate-button" :disabled="certificateBusy === badge.id" :title="`Download ${badge.name} certificate`" :aria-label="`Download ${badge.name} certificate for Class ${selected.name}`" @click="downloadCertificate(badge)"><Download :size="14" /></button></div></div></div></div>
         </section>
 
         <section class="activity-section"><div class="section-title-row"><div><div class="section-kicker">LATEST UPDATES</div><h2>Recent activity</h2></div><span class="activity-count">{{ activities.length }} recent entries</span></div><div class="surface activity-table" :class="{ 'activity-has-rows': activities.length }"><div v-if="activities.length" class="table-head"><span>CLASS</span><span>WEEK</span><span>LUNCHES</span><span>ITEMS SAVED</span></div><template v-if="activities.length"><div v-for="activity in activities" :key="`${activity.name}-${activity.date}`" class="table-row"><span class="table-class"><span class="table-avatar">{{ activity.name[0] }}</span>Class {{ activity.name }}</span><span :title="displayWeek(activity.date)" class="activity-week"><small class="mobile-activity-label">Week</small>{{ displayWeek(activity.date) }}</span><span class="activity-lunches"><small class="mobile-activity-label">Lunches</small>{{ activity.lunches.toLocaleString() }}</span><span class="table-items"><small class="mobile-activity-label">Items saved</small>+{{ activity.items.toLocaleString() }} <ArrowUpRight :size="15" /></span></div></template><div v-else class="table-empty"><span class="table-empty-icon"><Sandwich :size="29" /><Sparkles :size="16" /></span><strong>Your sustainable journey starts here!</strong><p>Your first entry will appear as soon as a class checks in.</p></div></div></section>
@@ -856,6 +994,6 @@ function changeCount(current: string, amount: number) {
     <div v-if="showAdminPassword" class="modal-backdrop" @mousedown.self="showAdminPassword = false"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="admin-password-title"><button class="modal-close" aria-label="Close" @click="showAdminPassword = false"><X :size="20" /></button><span class="modal-icon"><ShieldCheck :size="25" /></span><div class="section-kicker">SCHOOL ACCESS</div><h2 id="admin-password-title">Principal password</h2><p>Changing this password signs out other principal devices.</p><form @submit.prevent="changeAdminPassword"><label class="field-label" for="admin-current-password">CURRENT PASSWORD</label><input id="admin-current-password" v-model="currentAdminPassword" :type="showPassword ? 'text' : 'password'" autocomplete="current-password"><label class="field-label password-label" for="admin-updated-password">NEW PASSWORD</label><input id="admin-updated-password" v-model="updatedAdminPassword" :type="showPassword ? 'text' : 'password'" minlength="10" maxlength="128" autocomplete="new-password"><label class="field-label password-label" for="admin-confirm-password">CONFIRM NEW PASSWORD</label><input id="admin-confirm-password" v-model="confirmAdminPassword" :type="showPassword ? 'text' : 'password'" autocomplete="new-password"><div v-if="adminPasswordError" class="form-error" role="alert">{{ adminPasswordError }}</div><button class="primary-button modal-submit" type="submit" :disabled="busy"><Save :size="17" /> Update password</button></form></div></div>
     <div v-if="showManage && signedInName" class="modal-backdrop" @mousedown.self="showManage = false"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="manage-title"><button class="modal-close" aria-label="Close" @click="showManage = false"><X :size="20" /></button><span class="modal-icon"><KeyRound :size="25" /></span><div class="section-kicker">CLASS SETTINGS</div><h2 id="manage-title">Manage Class {{ signedInName }}</h2><p>Changing the password signs out other devices.</p><form @submit.prevent="changePassword"><label class="field-label" for="current-password">CURRENT PASSWORD</label><input id="current-password" v-model="currentPassword" :type="showPassword ? 'text' : 'password'" autocomplete="current-password"><label class="field-label password-label" for="updated-password">NEW PASSWORD</label><div class="password-field"><input id="updated-password" v-model="updatedPassword" :type="showPassword ? 'text' : 'password'" minlength="10" maxlength="128" autocomplete="new-password"><button type="button" :aria-label="showPassword ? 'Hide password' : 'Show password'" @click="showPassword = !showPassword"><EyeOff v-if="showPassword" :size="17" /><Eye v-else :size="17" /></button></div><label class="field-label password-label" for="confirm-updated-password">CONFIRM NEW PASSWORD</label><input id="confirm-updated-password" v-model="confirmUpdatedPassword" :type="showPassword ? 'text' : 'password'" autocomplete="new-password"><div v-if="manageError" class="form-error" role="alert">{{ manageError }}</div><button class="primary-button modal-submit" type="submit" :disabled="busy"><Save :size="17" /> Update password</button></form><button class="danger-link" type="button" @click="showManage = false; showDelete = true"><Trash2 :size="16" /> Delete this class</button></div></div>
     <div v-if="showDelete && selected" class="modal-backdrop" @mousedown.self="showDelete = false"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="delete-title"><button class="modal-close" aria-label="Close" @click="showDelete = false"><X :size="20" /></button><span class="modal-icon danger-icon"><Trash2 :size="25" /></span><div class="section-kicker">PERMANENT ACTION</div><h2 id="delete-title">Delete Class {{ selected.name }}?</h2><p>This removes the class, every weekly entry, and its place on the leaderboard. It cannot be undone.</p><form @submit.prevent="removeClass"><label class="field-label" for="delete-confirm-name">TYPE {{ selected.name }} TO CONFIRM</label><input id="delete-confirm-name" v-model="deleteConfirmName" autocomplete="off" autocapitalize="characters"><label class="field-label password-label" for="delete-password">CLASS PASSWORD</label><input id="delete-password" v-model="deletePassword" :type="showPassword ? 'text' : 'password'" autocomplete="current-password"><div v-if="deleteError" class="form-error" role="alert">{{ deleteError }}</div><button class="danger-button modal-submit" type="submit" :disabled="busy"><Trash2 :size="17" /> {{ busy ? 'Deleting...' : 'Delete class permanently' }}</button></form></div></div>
-    <div v-if="celebration" class="modal-backdrop celebration-backdrop" @mousedown.self="celebration = null"><div class="modal celebration" role="dialog" aria-modal="true" aria-labelledby="celebration-title"><div class="confetti" aria-hidden="true"><i v-for="i in 20" :key="i" :style="{ '--i': i - 1 }" /></div><button class="modal-close" aria-label="Close" @click="celebration = null"><X :size="20" /></button><span class="celebration-icon"><Trophy :size="38" /></span><div class="section-kicker">WELL DONE!</div><h2 id="celebration-title">{{ celebration.title }}</h2><p>{{ celebration.detail }}</p><button class="primary-button modal-submit" @click="celebration = null; scrollTo('achievements')">See achievements <ArrowRight :size="17" /></button></div></div>
+    <div v-if="celebration" class="modal-backdrop celebration-backdrop" @mousedown.self="celebration = null"><div class="modal celebration" role="dialog" aria-modal="true" aria-labelledby="celebration-title"><div class="confetti" aria-hidden="true"><i v-for="i in 20" :key="i" :style="{ '--i': i - 1 }" /></div><button class="modal-close" aria-label="Close" @click="celebration = null"><X :size="20" /></button><span class="celebration-icon"><Trophy :size="38" /></span><div class="section-kicker">WELL DONE!</div><h2 id="celebration-title">{{ celebration.title }}</h2><p>{{ celebration.detail }}</p><button v-if="celebrationBadge" class="certificate-celebration" type="button" @click="downloadCertificate(celebrationBadge)"><Download :size="17" /> Download class certificate</button><button class="primary-button modal-submit" @click="celebration = null; scrollTo('achievements')">See achievements <ArrowRight :size="17" /></button></div></div>
   </div>
 </template>
