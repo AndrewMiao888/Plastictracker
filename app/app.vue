@@ -369,6 +369,10 @@ async function reload() {
 }
 
 function scrollTo(id: string) {
+  if (id === 'overview') {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    return
+  }
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
@@ -860,6 +864,14 @@ async function downloadCertificate(badge: BadgeDefinition) {
       </div>
       <div class="sidebar-bottom"><div class="mission-icon"><Recycle :size="23" /></div><strong>Every item matters.</strong><p>One school day at a time, we're making a difference.</p><button v-if="signedInName" @click="selectedName = signedInName; scrollTo('check-in')">My class <ArrowRight :size="14" /></button><button class="principal-side-link" @click="isAdmin ? scrollTo('admin') : showAdminLogin = true"><KeyRound :size="14" /> {{ isAdmin ? 'Principal panel' : 'Principal sign in' }}</button></div>
     </aside>
+
+    <nav class="mobile-nav" aria-label="Mobile navigation">
+      <a href="#overview" title="Overview" @click.prevent="scrollTo('overview')"><Earth :size="20" aria-hidden="true" /><span>Overview</span></a>
+      <a href="#check-in" aria-label="Weekly check-in" title="Weekly check-in" @click.prevent="scrollTo('check-in')"><CalendarDays :size="20" aria-hidden="true" /><span>Check-in</span></a>
+      <a href="#leaderboard" aria-label="Leaderboard" title="Leaderboard" @click.prevent="scrollTo('leaderboard')"><Trophy :size="20" aria-hidden="true" /><span>Rankings</span></a>
+      <a href="#achievements" aria-label="Achievements" title="Achievements" @click.prevent="scrollTo('achievements')"><Award :size="20" aria-hidden="true" /><span>Badges</span></a>
+      <a v-if="isAdmin" href="#admin" aria-label="Principal panel" title="Principal panel" @click.prevent="scrollTo('admin')"><ShieldCheck :size="20" aria-hidden="true" /><span>Principal</span></a>
+    </nav>
 
     <main id="overview" class="main">
       <div class="topbar"><div class="breadcrumb">School dashboard <ChevronRight :size="14" /> <strong>Overview</strong></div><div class="top-actions"><span v-if="isAdmin" class="session-label"><ShieldCheck :size="15" /> Principal access</span><span v-else-if="signedInName" class="session-label"><ShieldCheck :size="15" /> Editing Class {{ signedInName }}</span><span class="date-pill"><CalendarDays :size="15" /><span :title="displayWeek(currentWeek())">{{ displayWeek(currentWeek()) }}</span></span><button v-if="isAdmin || signedInName" class="account-logout" type="button" aria-label="Sign out of all accounts" title="Sign out of all accounts on this device" :disabled="busy" @click="logoutAll"><LogOut :size="18" /></button><span class="top-avatar"><Leaf :size="17" /></span></div></div>

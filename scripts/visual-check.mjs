@@ -60,6 +60,34 @@ async function waitForTotal(page, value) {
   await page.waitForFunction(expected => document.querySelector('.hero-number strong')?.textContent === expected, value)
 }
 
+async function checkMobileNavigation(page, principal = false) {
+  const nav = page.getByRole('navigation', { name: 'Mobile navigation' })
+  assert.equal(await nav.isVisible(), true)
+  assert.equal(await nav.getByRole('link').count(), principal ? 5 : 4)
+  assert.ok(await nav.locator('a').evaluateAll(links => links.every(link => {
+    const rect = link.getBoundingClientRect()
+    const label = link.querySelector('span').getBoundingClientRect()
+    return rect.width >= 44 && rect.height >= 44 && label.left >= rect.left && label.right <= rect.right
+  })), 'Every navigation item must fit and remain easy to tap')
+  for (const [label, id] of [
+    ['Weekly check-in', 'check-in'], ['Leaderboard', 'leaderboard'], ['Achievements', 'achievements'],
+    ...(principal ? [['Principal panel', 'admin']] : []),
+  ]) {
+    const link = nav.getByRole('link', { name: label, exact: true })
+    if (id === 'achievements') { await link.focus(); await link.press('Enter') }
+    else await link.click()
+    await page.waitForFunction(targetId => {
+      const navRect = document.querySelector('.mobile-nav').getBoundingClientRect()
+      const target = document.getElementById(targetId).getBoundingClientRect()
+      return Math.abs(navRect.top) < 1 && target.top >= navRect.bottom && target.top < navRect.bottom + 40
+    }, id)
+    if (id === 'check-in') await page.screenshot({ path: join(screenshots, `mobile-nav-${page.viewportSize().width}${principal ? '-principal' : ''}.png`) })
+  }
+  await nav.getByRole('link', { name: 'Overview', exact: true }).click()
+  await page.waitForFunction(() => window.scrollY < 2)
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+}
+
 try {
   for (let attempt = 0; attempt < 80; attempt++) {
     try { if ((await fetch(`${origin}/api/dashboard`)).ok) break }
@@ -104,6 +132,7 @@ try {
   page.on('pageerror', error => errors.push(error.message))
   await page.goto(origin)
   await waitForTotal(page, '126')
+  assert.equal(await page.locator('.mobile-nav').isVisible(), false)
   const iconHrefs = await page.locator('link[rel="icon"]').evaluateAll(links => links.map(link => link.getAttribute('href')))
   assert.ok(iconHrefs.some(href => /^\/st-andrews-plastic-free-icon\.png\?v=/.test(href || '')))
   assert.ok(iconHrefs.some(href => /^\/plastic-free-favicon\.svg\?v=/.test(href || '')))
@@ -206,6 +235,10 @@ try {
   const narrowOverflow = await mobile.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
   assert.ok(narrowOverflow <= 0, `Narrow mobile page overflows by ${narrowOverflow}px.`)
   assert.equal(await mobile.locator('.activity-table .table-row').first().evaluate(element => element.scrollWidth > element.clientWidth), false)
+  for (const width of [390, 768, 320]) {
+    await mobile.setViewportSize({ width, height: 844 })
+    await checkMobileNavigation(mobile)
+  }
   await page.locator('#class-select').selectOption('5B')
   assert.match(await page.locator('.badge.near').first().innerText(), /items to go/)
   await page.locator('#class-select').selectOption('6AB')
@@ -603,6 +636,7 @@ try {
     if (withPrincipal) assert.equal((await mobile.request.post(`${origin}/api/admin/login`, { data: { password: changedAdminPassword } })).status(), 200)
     await mobile.reload()
     assert.equal(await mobile.locator('.stepper').count(), 2)
+    await checkMobileNavigation(mobile, withPrincipal)
     assert.ok((await mobile.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 0)
     await mobile.screenshot({ path: join(screenshots, withPrincipal ? 'principal-logout-mobile.png' : 'class-logout-mobile.png'), fullPage: true })
     await mobile.locator('.sidebar').screenshot({ path: join(screenshots, withPrincipal ? 'principal-mobile-header.png' : 'class-mobile-header.png') })
@@ -610,6 +644,7 @@ try {
     await mobile.locator('.locked-state').waitFor()
     assert.equal(await mobile.locator('.stepper').count(), 0)
     assert.equal(await mobile.locator('#admin').count(), 0)
+    assert.equal(await mobile.locator('.mobile-nav a[href="#admin"]').count(), 0)
     assert.ok(!(await mobile.context().cookies()).some(cookie => ['plastic_class_session', 'plastic_admin_session'].includes(cookie.name)))
     await mobile.reload()
     assert.equal(await mobile.locator('.stepper').count(), 0)
