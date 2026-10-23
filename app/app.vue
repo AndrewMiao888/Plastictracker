@@ -7,7 +7,7 @@ import {
   PackageCheck, Plus, Recycle, Save, Sandwich, Sparkles, Sprout,
   Trash2, Trophy, UsersRound, X, LockKeyhole, LogIn, LogOut, Settings2,
   Eye, EyeOff, ShieldCheck, KeyRound, TreePine, TreeDeciduous, Trees, Flame,
-  Crown, Download, Droplets, Handshake, Sun,
+  Crown, Download, Droplets, Handshake, Sun, BookOpen,
 } from '@lucide/vue'
 
 type WeekEntry = { lunches: number; items: number; updatedAt: string }
@@ -856,6 +856,7 @@ async function downloadCertificate(badge: BadgeDefinition) {
         <button class="side-link" @click="scrollTo('check-in')"><span class="side-icon"><CalendarDays :size="18" /></span>Weekly check-in</button>
         <button class="side-link" @click="scrollTo('leaderboard')"><span class="side-icon"><Trophy :size="18" /></span>Leaderboard</button>
         <button class="side-link" @click="scrollTo('achievements')"><span class="side-icon"><Award :size="18" /></span>Achievements</button>
+        <button class="side-link" @click="scrollTo('lunchbox-tips')"><span class="side-icon"><BookOpen :size="18" /></span>Lunchbox tips</button>
         <button v-if="isAdmin" class="side-link" @click="scrollTo('admin')"><span class="side-icon"><Settings2 :size="18" /></span>Principal panel</button>
       </div>
       <div class="side-group class-group"><div class="side-label side-label-row">SCHOOL CLASSES <span>{{ dashboard.classes.length }}</span></div>
@@ -870,6 +871,7 @@ async function downloadCertificate(badge: BadgeDefinition) {
       <a href="#check-in" aria-label="Weekly check-in" title="Weekly check-in" @click.prevent="scrollTo('check-in')"><CalendarDays :size="20" aria-hidden="true" /><span>Check-in</span></a>
       <a href="#leaderboard" aria-label="Leaderboard" title="Leaderboard" @click.prevent="scrollTo('leaderboard')"><Trophy :size="20" aria-hidden="true" /><span>Rankings</span></a>
       <a href="#achievements" aria-label="Achievements" title="Achievements" @click.prevent="scrollTo('achievements')"><Award :size="20" aria-hidden="true" /><span>Badges</span></a>
+      <a href="#lunchbox-tips" aria-label="Lunchbox tips" title="Lunchbox tips" @click.prevent="scrollTo('lunchbox-tips')"><BookOpen :size="20" aria-hidden="true" /><span>Tips</span></a>
       <a v-if="isAdmin" href="#admin" aria-label="Principal panel" title="Principal panel" @click.prevent="scrollTo('admin')"><ShieldCheck :size="20" aria-hidden="true" /><span>Principal</span></a>
     </nav>
 
@@ -925,6 +927,8 @@ async function downloadCertificate(badge: BadgeDefinition) {
         </section>
 
         <section class="activity-section"><div class="section-title-row"><div><div class="section-kicker">LATEST UPDATES</div><h2>Recent activity</h2></div><span class="activity-count">{{ activities.length }} recent entries</span></div><div class="surface activity-table" :class="{ 'activity-has-rows': activities.length }"><div v-if="activities.length" class="table-head"><span>CLASS</span><span>WEEK</span><span>LUNCHES</span><span>ITEMS SAVED</span></div><template v-if="activities.length"><div v-for="activity in activities" :key="`${activity.name}-${activity.date}`" class="table-row"><span class="table-class"><span class="table-avatar">{{ activity.name[0] }}</span>Class {{ activity.name }}</span><span :title="displayWeek(activity.date)" class="activity-week"><small class="mobile-activity-label">Week</small>{{ displayWeek(activity.date) }}</span><span class="activity-lunches"><small class="mobile-activity-label">Lunches</small>{{ activity.lunches.toLocaleString() }}</span><span class="table-items"><small class="mobile-activity-label">Items saved</small>+{{ activity.items.toLocaleString() }} <ArrowUpRight :size="15" /></span></div></template><div v-else class="table-empty"><span class="table-empty-icon"><Sandwich :size="29" /><Sparkles :size="16" /></span><strong>Your sustainable journey starts here!</strong><p>Your first entry will appear as soon as a class checks in.</p></div></div></section>
+        <PublicLunchTips />
+
         <section v-if="isAdmin" id="admin" class="admin-section">
           <div class="section-title-row"><div><div class="section-kicker">SCHOOL CONTROL</div><h2>Principal panel</h2></div><button class="admin-text-button" :disabled="busy" @click="logoutAll"><LogOut :size="16" /> Sign out</button></div>
           <div class="admin-grid">

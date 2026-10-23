@@ -63,7 +63,7 @@ async function waitForTotal(page, value) {
 async function checkMobileNavigation(page, principal = false) {
   const nav = page.getByRole('navigation', { name: 'Mobile navigation' })
   assert.equal(await nav.isVisible(), true)
-  assert.equal(await nav.getByRole('link').count(), principal ? 5 : 4)
+  assert.equal(await nav.getByRole('link').count(), principal ? 6 : 5)
   assert.ok(await nav.locator('a').evaluateAll(links => links.every(link => {
     const rect = link.getBoundingClientRect()
     const label = link.querySelector('span').getBoundingClientRect()
@@ -71,6 +71,7 @@ async function checkMobileNavigation(page, principal = false) {
   })), 'Every navigation item must fit and remain easy to tap')
   for (const [label, id] of [
     ['Weekly check-in', 'check-in'], ['Leaderboard', 'leaderboard'], ['Achievements', 'achievements'],
+    ['Lunchbox tips', 'lunchbox-tips'],
     ...(principal ? [['Principal panel', 'admin']] : []),
   ]) {
     const link = nav.getByRole('link', { name: label, exact: true })
@@ -82,6 +83,10 @@ async function checkMobileNavigation(page, principal = false) {
       return Math.abs(navRect.top) < 1 && target.top >= navRect.bottom && target.top < navRect.bottom + 40
     }, id)
     if (id === 'check-in') await page.screenshot({ path: join(screenshots, `mobile-nav-${page.viewportSize().width}${principal ? '-principal' : ''}.png`) })
+    if (id === 'lunchbox-tips') {
+      await page.screenshot({ path: join(screenshots, `lunchbox-tips-${page.viewportSize().width}${principal ? '-principal' : ''}.png`) })
+      assert.ok(await page.locator('#lunchbox-tips').evaluate(section => [...section.querySelectorAll('article, li, p, a')].every(element => element.scrollWidth <= element.clientWidth + 1)), 'Tips and shopping links must not clip on mobile')
+    }
   }
   await nav.getByRole('link', { name: 'Overview', exact: true }).click()
   await page.waitForFunction(() => window.scrollY < 2)
@@ -109,6 +114,12 @@ try {
   assert.match(await emptyPage.locator('.table-empty').innerText(), /first entry will appear as soon as a class checks in/i)
   assert.equal(await emptyPage.locator('.hero-visual').getAttribute('data-stage'), 'seed')
   assert.equal(await emptyPage.getByRole('button', { name: 'Create class', exact: true }).count(), 0)
+  assert.equal(await emptyPage.getByRole('heading', { name: 'Lunchbox tips', exact: true }).isVisible(), true)
+  assert.equal(await emptyPage.locator('#lunchbox-tips .tip-swap').count(), 4)
+  assert.equal(await emptyPage.locator('#lunchbox-tips input, #lunchbox-tips form, #lunchbox-tips button').count(), 0)
+  assert.match(await emptyPage.locator('.tips-counting').innerText(), /does not remove the packaging/)
+  assert.equal(await emptyPage.locator('#lunchbox-tips a').count(), 3)
+  assert.ok(await emptyPage.locator('#lunchbox-tips a').evaluateAll(links => links.every(link => link.protocol === 'https:' && link.target === '_blank' && link.relList.contains('noopener') && link.relList.contains('noreferrer'))))
   assert.ok((await emptyPage.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 0)
   await emptyPage.screenshot({ path: join(screenshots, 'empty-mobile.png'), fullPage: true })
   await emptyPage.close()
@@ -133,6 +144,9 @@ try {
   await page.goto(origin)
   await waitForTotal(page, '126')
   assert.equal(await page.locator('.mobile-nav').isVisible(), false)
+  await page.getByRole('button', { name: 'Lunchbox tips', exact: true }).click()
+  await page.waitForFunction(() => Math.abs(document.getElementById('lunchbox-tips').getBoundingClientRect().top - 85) < 2)
+  await page.locator('#lunchbox-tips').screenshot({ path: join(screenshots, 'lunchbox-tips-desktop.png') })
   const iconHrefs = await page.locator('link[rel="icon"]').evaluateAll(links => links.map(link => link.getAttribute('href')))
   assert.ok(iconHrefs.some(href => /^\/st-andrews-plastic-free-icon\.png\?v=/.test(href || '')))
   assert.ok(iconHrefs.some(href => /^\/plastic-free-favicon\.svg\?v=/.test(href || '')))
