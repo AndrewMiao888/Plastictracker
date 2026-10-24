@@ -78,9 +78,12 @@ async function checkMobileNavigation(page, principal = false) {
     if (id === 'achievements') { await link.focus(); await link.press('Enter') }
     else await link.click()
     await page.waitForFunction(targetId => {
+      const shell = document.querySelector('.navigation-shell').getBoundingClientRect()
+      const header = document.querySelector('.sidebar').getBoundingClientRect()
       const navRect = document.querySelector('.mobile-nav').getBoundingClientRect()
       const target = document.getElementById(targetId).getBoundingClientRect()
-      return Math.abs(navRect.top) < 1 && target.top >= navRect.bottom && target.top < navRect.bottom + 40
+      return Math.abs(shell.top) < 1 && header.top >= 0 && Math.abs(header.bottom - navRect.top) < 1 &&
+        Math.abs(shell.bottom - navRect.bottom) < 1 && target.top >= shell.bottom && target.top < shell.bottom + 40
     }, id)
     if (id === 'check-in') await page.screenshot({ path: join(screenshots, `mobile-nav-${page.viewportSize().width}${principal ? '-principal' : ''}.png`) })
     if (id === 'lunchbox-tips') {
@@ -88,9 +91,34 @@ async function checkMobileNavigation(page, principal = false) {
       assert.ok(await page.locator('#lunchbox-tips').evaluate(section => [...section.querySelectorAll('article, li, p, a')].every(element => element.scrollWidth <= element.clientWidth + 1)), 'Tips and shopping links must not clip on mobile')
     }
   }
+  await checkFooter(page)
+  assert.ok(await page.locator('.navigation-shell').evaluate(shell => {
+    const rect = shell.getBoundingClientRect()
+    const brand = shell.querySelector('.brand').getBoundingClientRect()
+    return Math.abs(rect.top) < 1 && brand.top >= 0 && brand.bottom < rect.bottom
+  }), 'The entire mobile header, including the home logo, must stay visible at the footer')
+  await page.locator('.brand').click()
+  await page.waitForFunction(() => window.scrollY < 2)
+  await nav.getByRole('link', { name: 'Lunchbox tips', exact: true }).click()
   await nav.getByRole('link', { name: 'Overview', exact: true }).click()
   await page.waitForFunction(() => window.scrollY < 2)
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+}
+
+async function checkFooter(page) {
+  const footer = page.locator('footer.footer')
+  assert.equal(await footer.count(), 1)
+  assert.equal(await footer.locator('.footer-credit').innerText(), 'Founded by Andrew Miao, creator of SynQuara Digital.')
+  await footer.scrollIntoViewIfNeeded()
+  assert.ok(await footer.locator('.footer-credit').evaluate(credit => {
+    const rect = credit.getBoundingClientRect()
+    return credit.scrollWidth <= credit.clientWidth && rect.left >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight + 1
+  }), 'The full founder credit must fit at the bottom of every view')
+  if (page.viewportSize().width > 850) {
+    assert.ok(await page.locator('.sidebar').evaluate(sidebar => Math.abs(sidebar.getBoundingClientRect().top) < 1), 'The desktop sidebar must remain pinned')
+    assert.equal(await page.locator('.sidebar').evaluate(sidebar => getComputedStyle(sidebar).backgroundColor), 'rgb(23, 61, 56)')
+  }
+  await page.screenshot({ path: join(screenshots, `footer-${page.viewportSize().width}.png`) })
 }
 
 try {
@@ -114,6 +142,7 @@ try {
   assert.match(await emptyPage.locator('.table-empty').innerText(), /first entry will appear as soon as a class checks in/i)
   assert.equal(await emptyPage.locator('.hero-visual').getAttribute('data-stage'), 'seed')
   assert.equal(await emptyPage.getByRole('button', { name: 'Create class', exact: true }).count(), 0)
+  await checkFooter(emptyPage)
   assert.equal(await emptyPage.getByRole('heading', { name: 'Lunchbox tips', exact: true }).isVisible(), true)
   assert.equal(await emptyPage.locator('#lunchbox-tips .tip-swap').count(), 4)
   assert.equal(await emptyPage.locator('#lunchbox-tips input, #lunchbox-tips form, #lunchbox-tips button').count(), 0)
@@ -147,6 +176,7 @@ try {
   await page.getByRole('button', { name: 'Lunchbox tips', exact: true }).click()
   await page.waitForFunction(() => Math.abs(document.getElementById('lunchbox-tips').getBoundingClientRect().top - 85) < 2)
   await page.locator('#lunchbox-tips').screenshot({ path: join(screenshots, 'lunchbox-tips-desktop.png') })
+  await checkFooter(page)
   const iconHrefs = await page.locator('link[rel="icon"]').evaluateAll(links => links.map(link => link.getAttribute('href')))
   assert.ok(iconHrefs.some(href => /^\/st-andrews-plastic-free-icon\.png\?v=/.test(href || '')))
   assert.ok(iconHrefs.some(href => /^\/plastic-free-favicon\.svg\?v=/.test(href || '')))
@@ -249,8 +279,8 @@ try {
   const narrowOverflow = await mobile.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
   assert.ok(narrowOverflow <= 0, `Narrow mobile page overflows by ${narrowOverflow}px.`)
   assert.equal(await mobile.locator('.activity-table .table-row').first().evaluate(element => element.scrollWidth > element.clientWidth), false)
-  for (const width of [390, 768, 320]) {
-    await mobile.setViewportSize({ width, height: 844 })
+  for (const [width, height] of [[390, 844], [768, 1024], [844, 390], [320, 844]]) {
+    await mobile.setViewportSize({ width, height })
     await checkMobileNavigation(mobile)
   }
   await page.locator('#class-select').selectOption('5B')

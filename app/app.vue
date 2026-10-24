@@ -215,6 +215,19 @@ const certificateBusy = ref('')
 const leaderboardMode = ref<'items' | 'xp' | 'streak'>('items')
 const updateAvailable = ref(false)
 let versionTimer: number | null = null
+const navigationShell = ref<HTMLElement | null>(null)
+const navigationHeight = ref(0)
+let navigationObserver: ResizeObserver | undefined
+
+// Account labels can wrap on narrow screens, so anchor spacing follows the full header.
+watch(navigationShell, element => {
+  navigationObserver?.disconnect()
+  if (!element) return
+  const measure = () => { navigationHeight.value = Math.ceil(element.getBoundingClientRect().height) }
+  measure()
+  navigationObserver = new ResizeObserver(measure)
+  navigationObserver.observe(element)
+}, { flush: 'post' })
 
 const selected = computed(() => dashboard.value?.classes.find(entry => entry.name === selectedName.value))
 const signedInName = computed(() => authSession.value?.className || null)
@@ -271,6 +284,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  navigationObserver?.disconnect()
   if (versionTimer) window.clearInterval(versionTimer)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
@@ -847,7 +861,8 @@ async function downloadCertificate(badge: BadgeDefinition) {
 <template>
   <div v-if="loadError" class="load-screen"><Leaf :size="34" /><h1>We couldn't load the school tracker.</h1><p>{{ loadError.message }}</p><button @click="reload">Try again</button></div>
   <div v-else-if="!dashboard" class="load-screen"><span class="loading-leaf"><Leaf :size="40" /></span><p>Loading your school...</p></div>
-  <div v-else class="app-shell" :style="themeStyle">
+  <div v-else class="app-shell" :style="[themeStyle, { '--mobile-navigation-height': `${navigationHeight}px` }]">
+    <div ref="navigationShell" class="navigation-shell">
     <aside class="sidebar">
       <button class="brand" type="button" aria-label="Go to overview" title="Go to overview" @click="scrollTo('overview')"><span class="brand-mark"><Leaf :size="25" :stroke-width="2.6" /></span><span>EcoLunch<span class="brand-accent"> League</span><small>ST ANDREW'S TRACKER</small></span></button>
       <div class="mobile-account-actions"><button v-if="isAdmin" class="mobile-sample-button" @click="scrollTo('admin')"><ShieldCheck :size="15" /> Principal</button><button v-else-if="signedInName" class="mobile-sample-button" @click="selectedName = signedInName; scrollTo('check-in')"><ShieldCheck :size="15" /> Class {{ signedInName }}</button><button v-else class="mobile-sample-button" @click="showAdminLogin = true"><KeyRound :size="15" /> Principal</button><button v-if="isAdmin || signedInName" class="account-logout" type="button" aria-label="Sign out of all accounts" title="Sign out of all accounts on this device" :disabled="busy" @click="logoutAll"><LogOut :size="18" /></button></div>
@@ -874,6 +889,7 @@ async function downloadCertificate(badge: BadgeDefinition) {
       <a href="#lunchbox-tips" aria-label="Lunchbox tips" title="Lunchbox tips" @click.prevent="scrollTo('lunchbox-tips')"><BookOpen :size="20" aria-hidden="true" /><span>Tips</span></a>
       <a v-if="isAdmin" href="#admin" aria-label="Principal panel" title="Principal panel" @click.prevent="scrollTo('admin')"><ShieldCheck :size="20" aria-hidden="true" /><span>Principal</span></a>
     </nav>
+    </div>
 
     <main id="overview" class="main">
       <div class="topbar"><div class="breadcrumb">School dashboard <ChevronRight :size="14" /> <strong>Overview</strong></div><div class="top-actions"><span v-if="isAdmin" class="session-label"><ShieldCheck :size="15" /> Principal access</span><span v-else-if="signedInName" class="session-label"><ShieldCheck :size="15" /> Editing Class {{ signedInName }}</span><span class="date-pill"><CalendarDays :size="15" /><span :title="displayWeek(currentWeek())">{{ displayWeek(currentWeek()) }}</span></span><button v-if="isAdmin || signedInName" class="account-logout" type="button" aria-label="Sign out of all accounts" title="Sign out of all accounts on this device" :disabled="busy" @click="logoutAll"><LogOut :size="18" /></button><span class="top-avatar"><Leaf :size="17" /></span></div></div>
@@ -992,7 +1008,7 @@ async function downloadCertificate(badge: BadgeDefinition) {
             </div>
           </div>
         </section>
-        <footer class="footer"><span><Leaf :size="15" /> {{ schoolSettings.weekName }}</span><div class="footer-meta"><span class="build-chip" :title="`Current site version ${appVersion}`">Build {{ appVersionShort }}</span><button v-if="!isAdmin" class="footer-admin-link" @click="showAdminLogin = true">Principal sign in</button><span v-else>Small choices add up.</span></div></footer>
+        <footer class="footer"><span><Leaf :size="15" /> {{ schoolSettings.weekName }}</span><div class="footer-meta"><span class="build-chip" :title="`Current site version ${appVersion}`">Build {{ appVersionShort }}</span><button v-if="!isAdmin" class="footer-admin-link" @click="showAdminLogin = true">Principal sign in</button><span v-else>Small choices add up.</span></div><p class="footer-credit">Founded by Andrew Miao, creator of SynQuara Digital.</p></footer>
       </div>
     </main>
 
